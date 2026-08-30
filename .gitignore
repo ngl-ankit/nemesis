@@ -1,0 +1,12 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# Local data & logs
+*.db
+*.log
+
+# Secrets — never commit
+nemesis/local_config.py
+.env

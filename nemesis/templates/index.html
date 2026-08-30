@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NEMESIS — AI Voice Debate Assistant</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Inter:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body>
+  <div class="app-card">
+
+    <!-- 1. Top bar -->
+    <header class="topbar">
+      <span class="wordmark">NEMESIS</span>
+      <div class="topbar-actions">
+        <button id="historyBtn" class="chip mono" type="button">HISTORY</button>
+        <div class="persona-wrap">
+          <button id="personaBtn" class="chip persona-chip" type="button">
+            <span class="persona-dot"></span><span id="personaLabel">Ultron</span>
+          </button>
+          <div id="personaMenu" class="persona-menu hidden">
+            <button type="button" data-persona="ultron">Ultron</button>
+            <button type="button" data-persona="economist">Economist</button>
+            <button type="button" data-persona="ethicist">Ethicist</button>
+            <button type="button" data-persona="skeptic">Skeptic</button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- 2 + 3. Core mic button + status -->
+    <main class="core-area">
+      <button id="coreBtn" class="core-btn" type="button" aria-label="Tap to speak">
+        <svg class="rings" viewBox="0 0 160 160" aria-hidden="true">
+          <circle class="ring ring-a" cx="80" cy="80" r="74" />
+          <circle class="ring ring-b" cx="80" cy="80" r="64" />
+        </svg>
+        <svg class="mic-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3z" />
+          <path d="M18 11a1 1 0 1 0-2 0 4 4 0 0 1-8 0 1 1 0 1 0-2 0 6 6 0 0 0 5 5.91V19H9a1 1 0 1 0 0 2h6a1 1 0 1 0 0-2h-2v-2.09A6 6 0 0 0 18 11z" />
+        </svg>
+      </button>
+      <p id="status" class="status mono">Tap core to speak</p>
+    </main>
+
+    <!-- 4. Transcript panel -->
+    <section id="transcript" class="transcript"></section>
+
+    <!-- 5. Bottom bar -->
+    <footer class="bottom-bar">
+      <button id="retriggerBtn" class="btn ghost mono" type="button">MIC</button>
+      <button id="endBtn" class="btn primary" type="button">End Debate</button>
+    </footer>
+  </div>
+
+  <!-- Scorecard modal -->
+  <div id="scoreModal" class="modal hidden">
+    <div class="modal-card">
+      <h2 class="modal-title">DEBATE SCORECARD</h2>
+      <div class="score-row">
+        <div class="score-block you">
+          <span class="score-label mono">YOU</span>
+          <span id="scoreYou" class="score-value">0</span>
+        </div>
+        <div class="score-divider"></div>
+        <div class="score-block nemesis">
+          <span class="score-label mono">NEMESIS</span>
+          <span id="scoreNemesis" class="score-value">0</span>
+        </div>
+      </div>
+      <div class="scorebar"><div id="scoreBar" class="scorebar-fill"></div></div>
+      <h3 class="list-title mono">STRENGTHS</h3>
+      <ul id="strengths" class="points strengths"></ul>
+      <h3 class="list-title mono">WEAKNESSES</h3>
+      <ul id="weaknesses" class="points weaknesses"></ul>
+      <p id="summary" class="summary"></p>
+      <button id="closeModal" class="btn primary modal-btn" type="button">Done</button>
+    </div>
+  </div>
+
+  <!-- History modal -->
+  <div id="historyModal" class="modal hidden">
+    <div class="modal-card">
+      <h2 class="modal-title">PAST DEBATES</h2>
+      <ul id="historyList" class="history-list"></ul>
+      <button id="closeHistory" class="btn primary modal-btn" type="button">Close</button>
+    </div>
+  </div>
+
+  <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
