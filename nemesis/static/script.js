@@ -516,7 +516,7 @@ async function streamDebate(body, onDelta) {
       const ev = /^event: (\w+)/m.exec(chunk); const data = /^data: (.*)$/m.exec(chunk);
       if (!ev || !data) continue;
       const payload = safeParse(data[1]);
-      if (ev[1] === "meta" && payload.model) $("tele-model").textContent = payload.model.split("/").pop().slice(0, 14).toUpperCase();
+      if (ev[1] === "meta" && payload.model) $("tele-model").textContent = payload.model.split("/").pop().slice(0, 11).toUpperCase();
       if (ev[1] === "delta" && payload.t) {
         if (first) { first = false; S.lastLatency = Math.round(performance.now() - t0); $("tele-latency").textContent = String(S.lastLatency).padStart(3, "0"); }
         onDelta(payload.t);
@@ -845,7 +845,7 @@ $("text-input").addEventListener("focus", () => { if (settings.timerEnabled && S
   try {
     const cfg = await api("GET", "/api/config");
     S.config = cfg;
-    $("tele-model").textContent = cfg.model.split("/").pop().slice(0, 14).toUpperCase();
+    $("tele-model").textContent = cfg.model.split("/").pop().slice(0, 11).toUpperCase();
     sel.innerHTML = Object.entries(cfg.languages).map(([k, v]) => '<option value="' + k + '"' + (k === settings.language ? " selected" : "") + ">" + esc(v) + "</option>").join("");
     if (!cfg.llm_configured) toast("GROQ_API_KEY NOT SET — RESPONSES WILL BE FALLBACKS", 5000);
     $("set-footer").textContent = "MODEL " + cfg.model + " · BUILD " + cfg.version;

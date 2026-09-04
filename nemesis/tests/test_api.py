@@ -135,3 +135,22 @@ def test_security_headers(client):
     r = client.get("/")
     assert r.headers["X-Frame-Options"] == "DENY"
     assert r.headers["X-Content-Type-Options"] == "nosniff"
+
+
+def test_pwa_assets_served(client):
+    r = client.get("/manifest.webmanifest")
+    assert r.status_code == 200
+    assert "manifest+json" in r.headers["Content-Type"]
+    assert r.get_json(force=True)["short_name"] == "Nemesis"
+    r = client.get("/sw.js")
+    assert r.status_code == 200
+    assert b"addEventListener" in r.data
+    for icon in ("icon.svg", "icon-192.png", "icon-512.png", "icon-512-maskable.png"):
+        assert client.get(f"/static/icons/{icon}").status_code == 200
+
+
+def test_admin_page_renders_with_token(client):
+    assert client.get("/admin").status_code == 403
+    r = client.get("/admin", headers={"X-Admin-Token": "secret-admin"})
+    assert r.status_code == 200
+    assert b"ADMIN DIAGNOSTICS" in r.data

@@ -95,6 +95,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .br .bracket { bottom: 0; right: 0; border-left: 0; border-top: 0; }
 .telemetry { position: absolute; font-size: 9.5px; color: var(--ink-faint); display: flex; flex-direction: column; gap: 2px; text-transform: uppercase; }
 .telemetry b { color: rgba(var(--a-rgb), 0.85); font-weight: 500; }
+.telemetry span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 150px; }
 .tl .telemetry { top: 4px; left: 34px; }
 .tr .telemetry { top: 4px; right: 34px; text-align: right; }
 .bl .telemetry { bottom: 4px; left: 34px; }
@@ -366,6 +367,8 @@ body[data-state="waking"] .hud-panel, body[data-state="waking"] .transcript-wrap
 @media (max-width: 860px) {
   .hud-corner { width: 120px; }
   .telemetry { font-size: 8.5px; }
+  .telemetry span { max-width: 96px; }
+  .toast { bottom: calc(150px + var(--sab)); }
   .topbar { margin-top: 44px; padding-top: 6px; }
   .topnav .nav-btn:not(.icon) { padding: 7px 9px; font-size: 10px; }
   .stage { display: flex; flex-direction: column; gap: 8px; min-height: 0; padding-top: 4px; }
