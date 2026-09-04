@@ -1,0 +1,59 @@
+{
+  "categories": [
+    {
+      "id": "technology",
+      "label": "Technology",
+      "topics": [
+        "Social media has done more harm than good to society.",
+        "Artificial intelligence will create more jobs than it destroys.",
+        "Smartphones should be banned in schools.",
+        "Privacy is dead and we should accept it.",
+        "Space exploration is a waste of money while problems exist on Earth."
+      ]
+    },
+    {
+      "id": "society",
+      "label": "Society",
+      "topics": [
+        "Universal basic income should replace most welfare programs.",
+        "Voting should be mandatory for all adult citizens.",
+        "College education is no longer worth the cost.",
+        "Remote work is better for both companies and employees.",
+        "Cities should ban private cars from their centers."
+      ]
+    },
+    {
+      "id": "ethics",
+      "label": "Ethics",
+      "topics": [
+        "It is morally wrong to eat meat.",
+        "Lying is sometimes the right thing to do.",
+        "Billionaires should not exist.",
+        "Zoos are unethical and should be closed.",
+        "Genetic editing of human embryos should be allowed."
+      ]
+    },
+    {
+      "id": "economics",
+      "label": "Economics",
+      "topics": [
+        "Rent control helps more people than it hurts.",
+        "Cryptocurrency is the future of money.",
+        "A four-day work week would boost productivity.",
+        "Tipping culture should be abolished.",
+        "Free trade benefits everyone in the long run."
+      ]
+    },
+    {
+      "id": "culture",
+      "label": "Culture",
+      "topics": [
+        "Video games are a legitimate art form.",
+        "Superhero movies are ruining cinema.",
+        "Homework should be abolished.",
+        "Streaming services have made music worse.",
+        "Nostalgia is holding culture back."
+      ]
+    }
+  ]
+}

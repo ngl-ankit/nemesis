@@ -1,2 +1,7 @@
-flask
-openai
+flask>=3.0,<4
+openai>=1.40
+gunicorn>=22.0
+python-dotenv>=1.0
+flask-limiter>=3.8
+flask-cors>=5.0
+psycopg2-binary>=2.9

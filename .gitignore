@@ -2,11 +2,21 @@
 __pycache__/
 *.py[cod]
 .venv/
+venv/
+.pytest_cache/
 
 # Local data & logs
 *.db
+*.db-wal
+*.db-shm
 *.log
 
 # Secrets — never commit
 nemesis/local_config.py
 .env
+nemesis/.env
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
