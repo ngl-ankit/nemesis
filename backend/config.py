@@ -53,6 +53,12 @@ GROQ_BASE_URL: str = os.environ.get("GROQ_BASE_URL", "https://api.groq.com/opena
 LLM_TIMEOUT_S: float = float(os.environ.get("LLM_TIMEOUT_S", "20"))
 LLM_MAX_RETRIES: int = int(os.environ.get("LLM_MAX_RETRIES", "3"))
 
+# Reasoning models (Groq's ``openai/gpt-oss-*``, OpenAI ``o``-series) spend
+# completion tokens on hidden reasoning *before* emitting any visible content.
+# "low" keeps that overhead small so our deliberately short spoken replies are
+# not swallowed whole. Set to "" to omit the parameter for non-reasoning models.
+GROQ_REASONING_EFFORT: str = os.environ.get("GROQ_REASONING_EFFORT", "low").strip().lower()
+
 # --- Flask -----------------------------------------------------------------
 _secret = os.environ.get("SECRET_KEY", "").strip()
 if not _secret:

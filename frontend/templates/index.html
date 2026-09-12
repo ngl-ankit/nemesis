@@ -1,0 +1,364 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>NEMESIS â€” Holographic Voice AI</title>
+  <meta name="description" content="Nemesis: a voice-only holographic AI companion. Speak, and JARVIS, ULTRON, VISION or THANOS answers â€” in your language." />
+  <meta name="theme-color" id="meta-theme" content="#030710" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Nemesis" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='icons/icon.svg') }}" />
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/icon-192.png') }}" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Orbitron:wght@500;700&family=Exo+2:wght@400;600&family=Cinzel:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v={{ version }}" />
+</head>
+<body data-persona="jarvis" data-mode="sleeping" data-state="idle">
+  <a class="skip-link" href="#core-btn">Skip to core control</a>
+
+  <!-- Boot: first user gesture unlocks audio context + microphone -->
+  <div id="boot" class="boot" role="dialog" aria-modal="true" aria-label="Engage interface">
+    <div class="boot-core" aria-hidden="true"><i></i><i></i><i></i></div>
+    <h1 class="boot-title">NEMESIS</h1>
+    <p class="boot-sub mono">HOLOGRAPHIC VOICE INTERFACE</p>
+    <button id="boot-btn" type="button">TAP TO ENGAGE</button>
+    <p class="boot-note mono">headphones recommended Â· microphone required</p>
+  </div>
+
+  <!-- Ambient layered backdrop: persona-specific pattern shown via CSS -->
+  <div class="backdrop" aria-hidden="true">
+    <div class="pattern pattern-blueprint"></div>
+    <div class="pattern pattern-hex"></div>
+    <div class="pattern pattern-nebula"></div>
+    <div class="pattern pattern-stars"></div>
+    <div class="scanline"></div>
+    <div class="vignette"></div>
+  </div>
+
+  <div id="offline-banner" class="offline-banner mono" role="status" hidden>
+    <span class="dot"></span> LINK LOST â€” voice systems degraded
+  </div>
+
+  <!-- Corner HUD brackets + telemetry -->
+  <div class="hud-corner tl" aria-hidden="true">
+    <span class="bracket"></span>
+    <div class="telemetry mono">
+      <span>SES <b id="tele-session">--------</b></span>
+      <span>MDL <b id="tele-model">--</b></span>
+    </div>
+  </div>
+  <div class="hud-corner tr" aria-hidden="true">
+    <span class="bracket"></span>
+    <div class="telemetry mono">
+      <span>LAT <b id="tele-latency">---</b> ms</span>
+      <span>UTC <b id="tele-clock">--:--:--</b></span>
+    </div>
+  </div>
+  <div class="hud-corner bl" aria-hidden="true">
+    <span class="bracket"></span>
+    <div class="telemetry mono">
+      <span>NET <b id="tele-net">ONLINE</b></span>
+      <span>VER <b>{{ version }}</b></span>
+    </div>
+  </div>
+  <div class="hud-corner br" aria-hidden="true">
+    <span class="bracket"></span>
+    <div class="telemetry mono">
+      <span>TURN <b id="tele-turn">00</b></span>
+      <span>FLC <b id="tele-fallacy">00</b></span>
+    </div>
+  </div>
+
+  <!-- Top bar -->
+  <header class="topbar" id="topbar">
+    <div class="wordmark-wrap">
+      <span class="wordmark" id="wordmark">JARVIS</span>
+      <span class="wordmark-sub mono" id="wordmark-sub">NEMESIS Â· ARC SYSTEM</span>
+    </div>
+    <nav class="topnav" aria-label="Primary">
+      <button class="nav-btn" id="nav-topics" type="button" aria-controls="sheet-topics" aria-haspopup="dialog">TOPICS</button>
+      <button class="nav-btn" id="nav-history" type="button" aria-controls="sheet-history" aria-haspopup="dialog">ARCHIVE</button>
+      <button class="nav-btn" id="nav-stats" type="button" aria-controls="sheet-stats" aria-haspopup="dialog">ANALYTICS</button>
+      <button class="nav-btn" id="nav-settings" type="button" aria-controls="sheet-settings" aria-haspopup="dialog">SETTINGS</button>
+    </nav>
+  </header>
+  <!-- ===== Main stage ===== -->
+  <main class="stage" id="stage">
+
+    <!-- Left telemetry rail -->
+    <aside class="panel-rail left" id="rail-left" aria-label="Voice telemetry">
+      <section class="hud-panel" id="panel-voice" aria-live="polite">
+        <header><span class="p-label">VOICE SYNC</span><span class="p-val mono" id="pv-voice">0%</span></header>
+        <div class="p-bar"><i id="pv-voice-bar"></i></div>
+        <footer class="mono" id="pv-voice-note">MIC STANDBY</footer>
+        <span class="connector" aria-hidden="true"></span>
+      </section>
+      <div class="wave" id="wave" aria-hidden="true"></div>
+      <section class="hud-panel" id="panel-lang" aria-live="polite">
+        <header><span class="p-label">LANGUAGE</span><span class="p-val mono"><span id="pv-lang">AUTO</span><em id="pv-lang-badge" class="lang-badge">DETECT</em></span></header>
+        <footer class="mono" id="pv-lang-note">SPONTANEOUS DETECTION</footer>
+        <span class="connector" aria-hidden="true"></span>
+      </section>
+    </aside>
+
+    <!-- Reactor core -->
+    <section class="core-wrap" id="core-wrap" aria-label="Reactor core">
+      <div class="core-stage" id="core-stage">
+        <canvas id="reactor-canvas" aria-hidden="true"></canvas>
+        <!-- CSS fallback rings (also the base look when WebGL is unavailable) -->
+        <div class="css-rings" id="css-rings" aria-hidden="true">
+          <div class="ring r1"></div>
+          <div class="ring r2"></div>
+          <div class="ring r3"></div>
+        </div>
+        <!-- Persona sigils: exactly one visible per data-persona -->
+        <svg class="sigil" id="sigil-jarvis" viewBox="0 0 100 100" aria-hidden="true">
+          <circle cx="50" cy="50" r="36" class="s1"/>
+          <circle cx="50" cy="50" r="24" class="s2"/>
+          <circle cx="50" cy="50" r="7" class="s3"/>
+          <g class="s4">
+            <line x1="50" y1="12" x2="50" y2="22"/>
+            <line x1="50" y1="78" x2="50" y2="88"/>
+            <line x1="12" y1="50" x2="22" y2="50"/>
+            <line x1="78" y1="50" x2="88" y2="50"/>
+            <line x1="23" y1="23" x2="30" y2="30"/>
+            <line x1="70" y1="70" x2="77" y2="77"/>
+            <line x1="77" y1="23" x2="70" y2="30"/>
+            <line x1="30" y1="70" x2="23" y2="77"/>
+          </g>
+        </svg>
+        <svg class="sigil" id="sigil-ultron" viewBox="0 0 100 100" aria-hidden="true">
+          <polygon points="50,12 83,31 83,69 50,88 17,69 17,31" class="s1"/>
+          <polygon points="50,26 71,38 71,62 50,74 29,62 29,38" class="s2"/>
+          <line x1="30" y1="50" x2="70" y2="50" class="s3"/>
+          <circle cx="50" cy="50" r="4" class="s4"/>
+        </svg>
+        <svg class="sigil" id="sigil-vision" viewBox="0 0 100 100" aria-hidden="true">
+          <rect x="28" y="28" width="44" height="44" class="s1" transform="rotate(45 50 50)"/>
+          <rect x="37" y="37" width="26" height="26" class="s2" transform="rotate(45 50 50)"/>
+          <circle cx="50" cy="50" r="5" class="s3"/>
+          <line x1="50" y1="10" x2="50" y2="24" class="s4"/>
+          <line x1="50" y1="76" x2="50" y2="90" class="s4"/>
+          <line x1="10" y1="50" x2="24" y2="50" class="s4"/>
+          <line x1="76" y1="50" x2="90" y2="50" class="s4"/>
+        </svg>
+        <svg class="sigil" id="sigil-thanos" viewBox="0 0 100 100" aria-hidden="true">
+          <path d="M50 14 L82 44 L70 44 L50 26 L30 44 L18 44 Z" class="s1"/>
+          <path d="M50 38 L78 64 L66 64 L50 50 L34 64 L22 64 Z" class="s2"/>
+          <path d="M50 62 L74 84 L62 84 L50 73 L38 84 L26 84 Z" class="s3"/>
+        </svg>
+        <svg class="timer-ring" id="timer-ring" viewBox="0 0 100 100" aria-hidden="true" hidden>
+          <circle class="track" cx="50" cy="50" r="47"/>
+          <circle class="fill" id="timer-arc" cx="50" cy="50" r="47"/>
+        </svg>
+        <button id="core-btn" class="core-btn" type="button"
+                aria-pressed="false" aria-label="Reactor core: start or stop listening" aria-describedby="status">
+          <span class="core-hit"></span>
+        </button>
+        <div id="fallacy-callout" class="fallacy-callout mono" role="status" aria-live="assertive" hidden>
+          <span class="fc-line"></span>
+          <span class="fc-label">FALLACY // <b id="fc-name"></b></span>
+        </div>
+        <div id="timer-readout" class="timer-readout mono" aria-live="off" hidden>60</div>
+      </div>
+      <p id="status" class="status mono" role="status" aria-live="polite">SAY "WAKE UP" OR TAP THE CORE</p>
+      <div id="captured" class="captured" aria-live="polite"></div>
+      <div id="reply-line" class="reply-line" aria-live="polite"></div>
+
+      <div class="persona-lock" id="persona-lock">
+        <span class="pl-label mono">PERSONA LOCK</span>
+        <div class="seg" role="radiogroup" aria-label="Persona">
+          <button type="button" role="radio" aria-checked="true" data-persona="jarvis">JARVIS</button>
+          <button type="button" role="radio" aria-checked="false" data-persona="ultron">ULTRON</button>
+          <button type="button" role="radio" aria-checked="false" data-persona="vision">VISION</button>
+          <button type="button" role="radio" aria-checked="false" data-persona="thanos">THANOS</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Right telemetry rail -->
+    <aside class="panel-rail right" id="rail-right" aria-label="Rhetoric telemetry">
+      <section class="hud-panel" id="panel-strength" aria-live="polite">
+        <header><span class="p-label">ARGUMENT STRENGTH</span><span class="p-val mono" id="pv-str">--</span></header>
+        <svg class="gauge" viewBox="0 0 120 70" aria-hidden="true">
+          <path class="g-track" d="M10 62 A50 50 0 0 1 110 62"/>
+          <path class="g-fill" id="pv-str-arc" d="M10 62 A50 50 0 0 1 110 62"/>
+        </svg>
+        <footer class="mono" id="pv-str-note">AWAITING INPUT</footer>
+      </section>
+      <section class="hud-panel" id="panel-scan" aria-live="polite">
+        <header><span class="p-label">FALLACY SCAN</span><span class="p-val mono" id="pv-scan">IDLE</span></header>
+        <div class="p-scan"><i></i></div>
+        <footer class="mono" id="pv-scan-note">0 FLAGGED</footer>
+      </section>
+      <section class="hud-panel" id="panel-integrity" aria-live="polite">
+        <header><span class="p-label">RHETORIC INTEGRITY</span><span class="p-val mono"><span id="pv-int-you">50</span> / <span id="pv-int-nem">50</span></span></header>
+        <div class="p-dual"><i class="you" id="pv-int-you-bar"></i><i class="nem" id="pv-int-nem-bar"></i></div>
+        <footer class="mono">YOU / NEMESIS</footer>
+      </section>
+    </aside>
+  </main>
+
+  <!-- ===== Voice dock (no text input — voice only) ===== -->
+  <footer class="dock" id="dock">
+    <button id="mic-btn" class="btn primary mono" type="button" aria-label="Toggle microphone">
+      <svg class="mic-ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3" fill="currentColor"/><path d="M5 11a7 7 0 0 0 14 0" fill="none" stroke="currentColor" stroke-width="1.6"/><line x1="12" y1="18" x2="12" y2="22" stroke="currentColor" stroke-width="1.6"/></svg>
+      <span id="mic-label">MIC</span>
+    </button>
+    <div class="dock-hint mono" id="dock-hint">VOICE-ONLY INTERFACE — JUST SPEAK</div>
+    <button id="end-btn" class="btn ghost mono" type="button" disabled>END SESSION</button>
+  </footer>
+  <!-- ===== Scorecard HUD readout ===== -->
+  <section id="scorecard" class="scorecard" role="dialog" aria-modal="true" aria-labelledby="sc-title" hidden>
+    <div class="sc-frame">
+      <header class="sc-head">
+        <h2 id="sc-title">DEBATE VERDICT</h2>
+        <span class="mono" id="sc-meta">--</span>
+      </header>
+      <div class="sc-radials">
+        <div class="radial you">
+          <svg viewBox="0 0 120 120" aria-hidden="true">
+            <circle class="rt" cx="60" cy="60" r="52"/>
+            <circle class="rf" id="sc-arc-you" cx="60" cy="60" r="52"/>
+          </svg>
+          <div class="rv"><b id="sc-you">0</b><span class="mono">YOU</span></div>
+        </div>
+        <div class="sc-vs mono">VS</div>
+        <div class="radial nem">
+          <svg viewBox="0 0 120 120" aria-hidden="true">
+            <circle class="rt" cx="60" cy="60" r="52"/>
+            <circle class="rf" id="sc-arc-nem" cx="60" cy="60" r="52"/>
+          </svg>
+          <div class="rv"><b id="sc-nem">0</b><span class="mono">NEMESIS</span></div>
+        </div>
+      </div>
+      <p class="sc-summary" id="sc-summary"></p>
+      <div class="sc-cols">
+        <div><h3 class="mono">STRENGTHS</h3><ul id="sc-strengths"></ul></div>
+        <div><h3 class="mono">WEAKNESSES</h3><ul id="sc-weaknesses"></ul></div>
+      </div>
+      <div class="sc-heat">
+        <h3 class="mono">FALLACY HEATMAP</h3>
+        <div id="sc-heatmap" class="heatmap"></div>
+      </div>
+      <div class="sc-ach" id="sc-ach" hidden>
+        <h3 class="mono">UNLOCKED</h3>
+        <div id="sc-ach-list" class="badge-row"></div>
+      </div>
+      <div class="sc-actions">
+        <button class="btn ghost mono" id="sc-export-img" type="button">EXPORT IMAGE</button>
+        <button class="btn ghost mono" id="sc-export-pdf" type="button">PRINT / PDF</button>
+        <button class="btn primary" id="sc-close" type="button">NEW SESSION</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Sheets ===== -->
+  <div id="sheet-backdrop" class="sheet-backdrop" hidden></div>
+  <aside id="sheet-topics" class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-topics-title" hidden>
+    <header><h2 id="sheet-topics-title">OPENING TOPICS</h2><button class="x" type="button" data-close aria-label="Close">✕</button></header>
+    <div class="sheet-body" id="topics-body"></div>
+  </aside>
+
+  <aside id="sheet-history" class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-history-title" hidden>
+    <header><h2 id="sheet-history-title">PAST SESSIONS</h2><button class="x" type="button" data-close aria-label="Close">✕</button></header>
+    <div class="sheet-body" id="history-body"></div>
+  </aside>
+
+  <aside id="sheet-detail" class="sheet wide" role="dialog" aria-modal="true" aria-labelledby="detail-title" hidden>
+    <header><button class="x back" type="button" id="detail-back" aria-label="Back to history">←</button><h2 id="detail-title">SESSION</h2><button class="x" type="button" data-close aria-label="Close">✕</button></header>
+    <div class="sheet-body" id="detail-body"></div>
+  </aside>
+  <aside id="sheet-stats" class="sheet wide" role="dialog" aria-modal="true" aria-labelledby="sheet-stats-title" hidden>
+    <header><h2 id="sheet-stats-title">OPERATOR ANALYTICS</h2><button class="x" type="button" data-close aria-label="Close">✕</button></header>
+    <div class="sheet-body" id="stats-body">
+      <div class="stat-grid" id="stat-cards"></div>
+      <div class="mini-chart">
+        <h3 class="mono">RECENT STRENGTH DELTAS</h3>
+        <div id="delta-bars" class="delta-bars" aria-label="Argument strength deltas per session"></div>
+      </div>
+      <div class="ach-grid" id="stat-ach"></div>
+    </div>
+  </aside>
+
+  <aside id="sheet-settings" class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-settings-title" hidden>
+    <header><h2 id="sheet-settings-title">SYSTEM CONFIG</h2><button class="x" type="button" data-close aria-label="Close">✕</button></header>
+    <div class="sheet-body settings">
+      <fieldset>
+        <legend class="mono">PERSONA</legend>
+        <div class="seg" role="radiogroup" id="set-persona">
+          <button type="button" role="radio" data-v="jarvis">JARVIS</button>
+          <button type="button" role="radio" data-v="ultron">ULTRON</button>
+          <button type="button" role="radio" data-v="vision">VISION</button>
+          <button type="button" role="radio" data-v="thanos">THANOS</button>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend class="mono">DIFFICULTY</legend>
+        <div class="seg" role="radiogroup" id="set-difficulty">
+          <button type="button" role="radio" data-v="novice">NOVICE</button>
+          <button type="button" role="radio" data-v="adept">ADEPT</button>
+          <button type="button" role="radio" data-v="mythic">MYTHIC</button>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend class="mono">AGGRESSION — <span id="set-aggr-val">50</span></legend>
+        <div class="range-row"><span class="mono">SOCRATIC</span><input type="range" id="set-aggression" min="0" max="100" value="50" /><span class="mono">HOSTILE</span></div>
+      </fieldset>
+      <fieldset>
+        <legend class="mono">LANGUAGE</legend>
+        <select id="set-language" aria-label="Conversation language"></select>
+      </fieldset>
+      <fieldset>
+        <legend class="mono">VOICE OUTPUT</legend>
+        <label class="switch"><input type="checkbox" id="set-tts" checked /><span></span><span class="mono">SPEAK RESPONSES</span></label>
+        <div class="range-row"><span class="mono">VOL 0</span><input type="range" id="set-volume" min="0" max="100" value="90" aria-label="Voice volume" /><span class="mono">100</span></div>
+        <div id="voice-profiles" class="voice-profiles" role="listbox" aria-label="Voice profile"></div>
+        <button class="btn ghost mono small" id="voice-test" type="button">TEST VOICE</button>
+      </fieldset>
+      <fieldset>
+        <legend class="mono">WAKE CONTROL</legend>
+        <input type="text" id="set-wake" maxlength="40" placeholder="wake up" aria-label="Wake phrase" />
+        <label class="switch"><input type="checkbox" id="set-autolisten" checked /><span></span><span class="mono">ALWAYS LISTEN FOR WAKE PHRASE</span></label>
+      </fieldset>
+      <fieldset>
+        <legend class="mono">MICROPHONE</legend>
+        <button class="btn ghost mono small" id="mic-check" type="button">CHECK MICROPHONE</button>
+        <div class="p-bar mic-bar"><i id="mic-check-bar"></i></div>
+        <p class="mono fine" id="mic-check-note">No test run yet.</p>
+      </fieldset>
+      <fieldset>
+        <legend class="mono">ROUND TIMER</legend>
+        <div class="row">
+          <label class="switch"><input type="checkbox" id="set-timer" /><span></span><span class="mono">TIMED TURNS</span></label>
+          <select id="set-timer-secs" aria-label="Seconds per turn"><option value="30">30s</option><option value="60" selected>60s</option><option value="90">90s</option><option value="120">120s</option></select>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend class="mono">ACHIEVEMENTS</legend>
+        <div id="ach-grid" class="ach-grid"></div>
+      </fieldset>
+      <p class="mono fine" id="set-footer"></p>
+    </div>
+  </aside>
+  <!-- Persona transition overlay -->
+  <div id="fx" class="fx" hidden aria-hidden="true">
+    <div class="fx-veil"></div>
+    <div class="fx-name" id="fx-name">VISION</div>
+    <div class="fx-sub mono" id="fx-sub">NEMESIS · MIND BLOOM</div>
+  </div>
+
+  <div id="toast" class="toast mono" role="status" aria-live="polite" hidden></div>
+
+  <script type="importmap">
+    { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
+  </script>
+  <script type="module" src="{{ url_for('static', filename='js/reactor.js') }}?v={{ version }}"></script>
+  <script src="{{ url_for('static', filename='js/script.js') }}?v={{ version }}" defer></script>
+</body>
+</html>

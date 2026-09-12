@@ -5,7 +5,7 @@ from __future__ import annotations
 ACHIEVEMENTS = {
     "first_blood": {"name": "First Blood", "desc": "Complete your first debate.", "icon": "01"},
     "fallacy_free": {"name": "Fallacy-Free Round", "desc": "Finish a debate with zero fallacies detected.", "icon": "00"},
-    "steelman_slayer": {"name": "Steelman Slayer", "desc": "Beat Nemesis on Ultron difficulty.", "icon": "SS"},
+    "steelman_slayer": {"name": "Steelman Slayer", "desc": "Beat Nemesis on Mythic difficulty.", "icon": "SS"},
     "comeback_win": {"name": "Comeback Win", "desc": "Win after your opening point was rated below 40.", "icon": "CB"},
     "marathon": {"name": "Marathon", "desc": "Hold a debate for 8+ of your own turns.", "icon": "MR"},
     "decisive": {"name": "Decisive Victory", "desc": "Score 70 or higher in a single debate.", "icon": "70"},
@@ -27,7 +27,7 @@ def evaluate(session: dict, stats: dict) -> list[str]:
         earned.append("first_blood")
     if user_turns >= 2 and not session.get("fallacies"):
         earned.append("fallacy_free")
-    if won and session.get("difficulty") == "ultron":
+    if won and session.get("difficulty") == "mythic":
         earned.append("steelman_slayer")
     if won and strengths and strengths[0] < 40:
         earned.append("comeback_win")

@@ -12,9 +12,14 @@ venv/
 *.log
 
 # Secrets — never commit
-nemesis/local_config.py
+backend/local_config.py
 .env
-nemesis/.env
+backend/.env
+
+# Local scratch / verification artifacts
+_srv.*
+_verify_*.py
+_audit_*.py
 
 # OS / editor
 .DS_Store

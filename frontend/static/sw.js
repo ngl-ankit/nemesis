@@ -1,12 +1,15 @@
 /* Nemesis service worker — offline-friendly app shell.
- *  - App shell (HTML, CSS, JS, icons, manifest): cache-first, refreshed in background.
+ *  - App shell (HTML, CSS, JS, icons, manifest): network-first, falls back to
+ *    cache when offline. Network-first is deliberate: cache-first would pin a
+ *    stale script.js/style.css forever after a deploy (the old build kept being
+ *    served until the cache name was bumped by hand), which broke voice input.
  *  - /api/*, /health, /admin: network-only, never cached (per-user, streamed).
  *  - Cross-origin (fonts, Three.js CDN): stale-while-revalidate.
  *  - Navigations fall back to the cached shell when offline. */
-const VERSION = "nemesis-v1";
+const VERSION = "nemesis-v7";
 const SHELL_CACHE = `${VERSION}-shell`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
-const SHELL = ["/", "/static/style.css", "/static/script.js", "/static/reactor.js",
+const SHELL = ["/", "/static/style.css", "/static/js/script.js", "/static/js/reactor.js",
   "/static/icons/icon.svg", "/static/icons/icon-192.png", "/static/icons/icon-512.png", "/manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {
@@ -43,13 +46,14 @@ self.addEventListener("fetch", (event) => {
   }
 
   if (url.origin === self.location.origin) {
-    event.respondWith(caches.match(req).then((cached) => {
-      const network = fetch(req).then((res) => {
-        if (res && res.ok) caches.open(SHELL_CACHE).then((c) => c.put(req, res.clone())).catch(() => {});
-        return res;
-      }).catch(() => cached);
-      return cached || network;
-    }));
+    // Network-first for the app shell so a deploy is picked up on the next
+    // load; the cache only serves as the offline fallback. Cache under the
+    // canonical pathname so `?v=` cache-busting still hits the same entry.
+    const key = new URL(url.pathname, url.origin).toString();
+    event.respondWith(fetch(req).then((res) => {
+      if (res && res.ok) caches.open(SHELL_CACHE).then((c) => c.put(key, res.clone())).catch(() => {});
+      return res;
+    }).catch(() => caches.match(key).then((cached) => cached || caches.match(req))));
     return;
   }
 

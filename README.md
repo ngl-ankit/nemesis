@@ -3,7 +3,7 @@
 > *Argue. Get dismantled. Improve.*
 
 Nemesis is a voice-first debate sparring partner. You state an opinion; Nemesis (an
-Ultron-flavoured adversary powered by Groq-hosted Llama models) fires back a counter-argument,
+Ultron-flavoured adversary powered by Groq-hosted models) fires back a counter-argument,
 scans your reasoning for logical fallacies in real time, rates the strength of each point, and
 issues a full scorecard at the end. Everything runs inside a holographic HUD — a live Three.js
 reactor core that breathes with the conversation.
@@ -22,7 +22,7 @@ vanilla JS (ES modules) · Three.js · Web Speech API · PWA.
 5. [Storage decision — Postgres vs Persistent Disk](#storage-decision)
 6. [API reference](#api-reference)
 7. [Design system](#design-system)
-8. [Testing & verification](#testing--verification)
+8. [Verification](#verification)
 9. [Project structure](#project-structure)
 10. [Troubleshooting](#troubleshooting)
 
@@ -34,14 +34,13 @@ vanilla JS (ES modules) · Three.js · Web Speech API · PWA.
 | | |
 |---|---|
 | **Voice in / voice out** | Web Speech API recognition with interim results; SpeechSynthesis playback, sentence-queued so speech starts before the model finishes. |
-| **Text input fallback** | Type when you can't talk. Same pipeline, same scoring. Keyboard shortcut `T`. |
 | **Streaming responses** | `/api/debate/stream` is Server-Sent Events — tokens land in the transcript as they're generated. |
-| **Four personas** | Ultron · Economist · Ethicist · Skeptic, each with its own system prompt and TTS voice profile. |
-| **Difficulty levels** | Novice / Adept / Ultron — control steelmanning depth, concession rate and verbosity. |
+| **Four personas** | JARVIS · ULTRON · VISION · THANOS, each with its own system prompt, colour palette and TTS voice profile. |
+| **Difficulty levels** | Novice / Adept / Mythic — control steelmanning depth, concession rate and verbosity. |
 | **Aggression slider** | 0–100 tone dial, injected into the system prompt. |
-| **Topic starter deck** | 25 curated prompts across 5 categories (`nemesis/topics.json`). |
+| **Topic starter deck** | 25 curated prompts across 5 categories (`backend/topics.json`). |
 | **Round timer** | Optional per-turn countdown ring around the core (30 s – 3 min). |
-| **Custom wake phrase** | Default *"Wake up, Ultron"*; change it in System Config. Always-listen mode optional. |
+| **Custom wake phrase** | Default *"wake up"*; change it in System Config. Always-listen mode optional. |
 | **Multi-language** | English, Spanish, French, German, Italian, Portuguese, Hindi, Japanese, Chinese — Nemesis responds in kind. |
 
 ### Analysis
@@ -65,12 +64,12 @@ vanilla JS (ES modules) · Three.js · Web Speech API · PWA.
 |---|---|
 | **PWA** | Installable; manifest + full icon set (SVG, 192, 512, maskable). |
 | **Offline shell** | Service worker caches the app shell so the HUD boots offline and shows a *LINK LOST* banner. API calls are never cached. |
-| **Themes** | Ultron (red/orange), JARVIS (blue), Vision (gold). |
-| **Accessibility** | Full keyboard operation (Space = core, T = type, Esc = close), focus traps in sheets, ARIA live regions, `prefers-reduced-motion` support, CSS-3D fallback when WebGL is unavailable. |
+| **Themes** | JARVIS (cyan), Ultron (red/orange), Vision (gold), Thanos (violet) — accent tokens swap per persona. |
+| **Accessibility** | Keyboard operation (Esc closes scorecard/sheets), ARIA live regions, focus-visible rings, `prefers-reduced-motion` support, CSS-3D fallback when WebGL is unavailable. |
 | **Admin panel** | `/admin` — env-gated (`ADMIN_ENABLED`) and token-protected. Shows model, DB backend, p50/p95 latency, error rate, last 100 events. |
 
 ### Production hardening
-- Valid Groq model (`llama-3.3-70b-versatile`) — configurable via `GROQ_MODEL`. The original `qwen/qwen3.8-27b` was not a real Groq model id.
+- Configurable Groq model via `GROQ_MODEL` (default `llama-3.3-70b-versatile`). The original `qwen/qwen3.8-27b` was not a real Groq model id.
 - `debug=True` removed; the app never runs the Flask dev server in production.
 - API key from **environment variables only** in production. `.env` / `local_config.py` fallbacks work only outside production.
 - Retry with exponential back-off + jitter on every LLM call; in-character fallback (*"Recalibrating... state your point again."*) when Groq is unreachable so the UI never breaks.
@@ -79,7 +78,6 @@ vanilla JS (ES modules) · Three.js · Web Speech API · PWA.
 - Locked-down CORS — same-origin by default; `CORS_ORIGINS` allow-list when needed.
 - Signed-cookie sessions; per-user data isolation on every session/stats/settings route.
 - `/health` endpoint for Render health checks (reports DB status + whether the LLM key is configured).
-- 35 pytest tests covering every route, JSON extraction, retries and fallbacks.
 
 ---
 
@@ -87,10 +85,10 @@ vanilla JS (ES modules) · Three.js · Web Speech API · PWA.
 
 ```bash
 git clone https://github.com/ngl-ankit/nemesis.git
-cd nemesis/nemesis                     # note: the Flask app lives in the inner folder
+cd nemesis/backend                      # the Flask app lives in backend/
 
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -r requirements.txt -r requirements-dev.txt
+pip install -r requirements.txt
 
 cp .env.example .env                   # then paste your GROQ_API_KEY into .env
 ```
@@ -112,14 +110,8 @@ PORT=8000 gunicorn app:app -c gunicorn.conf.py    # http://127.0.0.1:8000
 This is exactly the command Render runs (`Procfile` / `render.yaml`). Gunicorn uses threaded
 workers (`gthread`, 8 threads) so SSE streams don't block other requests.
 
-### Run the tests
-
-```bash
-pytest -q tests          # 35 passed
-```
-
 > **Browser support:** speech recognition needs Chrome/Edge (desktop or Android). Safari/Firefox
-> can use text input and still get TTS. Microphone requires HTTPS or `localhost`.
+> can still get TTS. Microphone requires HTTPS or `localhost`.
 
 ---
 
@@ -129,6 +121,7 @@ pytest -q tests          # 35 passed
 |---|---|---|---|
 | `GROQ_API_KEY` | **Yes** (prod) | — | Groq API key. In production it must come from the environment. Locally `.env` or `local_config.py` also work. |
 | `GROQ_MODEL` | No | `llama-3.3-70b-versatile` | Any Groq chat model id, e.g. `llama-3.1-8b-instant` for lower latency. |
+| `GROQ_REASONING_EFFORT` | No | `low` | `low`/`medium`/`high`, or empty to omit. Required for reasoning models (`openai/gpt-oss-20b`, `openai/gpt-oss-120b`) — they spend completion tokens on hidden reasoning, so without this the visible reply comes back empty. |
 | `SECRET_KEY` | **Yes** (prod) | dev fallback | Signs the session cookie. App refuses to boot in production without it. |
 | `FLASK_ENV` | No | `development` | Set to `production` on Render. `RENDER=true` (auto-set by Render) also implies production. |
 | `DATABASE_URL` | No | — | Postgres connection string. When set, Postgres is used; otherwise SQLite. |
@@ -172,7 +165,7 @@ Every push to `main` auto-deploys (`autoDeploy: true`).
 
 1. **New → Web Service**, connect the repo.
 2. Settings:
-   - **Root Directory:** `nemesis`
+   - **Root Directory:** `backend`
    - **Runtime:** Python 3
    - **Build Command:** `pip install -r requirements.txt`
    - **Start Command:** `gunicorn app:app -c gunicorn.conf.py`
@@ -264,8 +257,8 @@ the interface's heart; everything else is instrumentation orbiting it.
 | `--c1` | `#00d2ff` | Cyan — **sparingly**: Nemesis-side data, secondary ring, node markers |
 | `--ink` / `--ink-dim` / `--ink-faint` | `#e9eef3 / #8f9aa6 / #4b5560` | Body text hierarchy |
 
-Theme overrides (`[data-theme="jarvis"]`, `[data-theme="vision"]`) swap only the accent tokens,
-so every component re-skins automatically.
+Theme overrides (`body[data-persona="jarvis"]`, `[data-persona="ultron"]`, `[data-persona="vision"]`,
+`[data-persona="thanos"]`) swap only the accent tokens, so every component re-skins automatically.
 
 ### Typography
 - **Chakra Petch** — HUD labels, headings, numerals (letter-spaced, uppercase)
@@ -292,22 +285,24 @@ and transcript, focus trapping inside sheets, Escape to close, full keyboard pat
 
 ---
 
-## Testing & verification
+## Verification
 
 ```bash
-cd nemesis
-pytest -q tests                                          # unit + route tests (35)
+cd backend
+python app.py                                            # dev server on :5000
+curl -s localhost:5000/health                            # → {"status":"ok",...}
+
 PORT=8000 gunicorn app:app -c gunicorn.conf.py           # production server
 curl -s localhost:8000/health                            # → {"status":"ok",...}
 ```
 
 Verified in this build:
-- ✅ 35/35 tests pass
 - ✅ Serves under Gunicorn (gthread) with structured JSON request logs
-- ✅ `/`, `/health`, `/manifest.webmanifest`, `/sw.js`, icons, `/admin` (403 without token, 200 with) all respond correctly
+- ✅ `/`, `/health`, `/manifest.webmanifest`, `/sw.js`, icons all respond correctly
 - ✅ Headless Chromium: zero console errors on desktop (1440×900) and mobile (390×844) viewports
-- ✅ Full text-mode flow — topics sheet → settings → two debate turns → END DEBATE → scorecard HUD (badges unlocked) → history → stats — zero JS errors
+- ✅ Full flow — topics sheet → settings → two debate turns → END DEBATE → scorecard HUD (badges unlocked) → history → stats — zero JS errors
 - ✅ LLM-offline fallback path produces in-character "Recalibrating…" responses and a graceful scorecard
+- ✅ Live end-to-end HTTP check: pages, static assets, config/topics, debate + SSE stream, fallacy/strength/scorecard, cookie-scoped session save→history→detail→delete, stats/achievements/settings, and admin gating (403 without token / 200 with)
 
 ---
 
@@ -315,29 +310,33 @@ Verified in this build:
 
 ```
 nemesis/                     ← repo root (Procfile, render.yaml, README.md, ecosystem.config.cjs)
-└── nemesis/                 ← Flask app (Render rootDir)
-    ├── app.py               routes, sessions, SSE, rate limiting, logging
-    ├── config.py            env resolution, production guards
-    ├── llm_client.py        Groq calls, retries, fallbacks, streaming, JSON extraction
-    ├── prompts.py           persona / difficulty / aggression / language prompt builders
-    ├── database.py          SQLite ⇄ Postgres compatibility layer, stats, achievements
-    ├── achievements.py      badge definitions + unlock rules
-    ├── topics.json          starter deck
-    ├── gunicorn.conf.py     gthread workers, PORT binding, proxy headers
-    ├── requirements.txt / requirements-dev.txt
-    ├── .env.example
+├── backend/                 ← Flask app (Render rootDir)
+│   ├── app.py               routes, sessions, SSE, rate limiting, logging
+│   ├── config.py            env resolution, production guards
+│   ├── llm_client.py        Groq calls, retries, fallbacks, streaming, JSON extraction
+│   ├── prompts.py           persona / difficulty / aggression / language prompt builders
+│   ├── database.py          SQLite ⇄ Postgres compatibility layer, stats, achievements
+│   ├── achievements.py      badge definitions + unlock rules
+│   ├── topics.json          starter deck
+│   ├── gunicorn.conf.py     gthread workers, PORT binding, proxy headers
+│   ├── requirements.txt
+│   └── .env.example
+└── frontend/
     ├── templates/
     │   ├── index.html       HUD markup
     │   └── admin.html       diagnostics panel
-    ├── static/
-    │   ├── style.css        design system
-    │   ├── reactor.js       Three.js core + rings + wake sequence + chime
-    │   ├── script.js        app controller (speech, SSE, panels, sheets, scorecard, export)
-    │   ├── sw.js            service worker
-    │   ├── manifest.webmanifest
-    │   └── icons/           icon.svg · icon-192.png · icon-512.png · icon-512-maskable.png
-    └── tests/               pytest suite
+    └── static/
+        ├── style.css        design system
+        ├── js/
+        │   ├── reactor.js   Three.js core + rings + wake sequence + chime
+        │   └── script.js    app controller (speech, SSE, panels, sheets, scorecard, export)
+        ├── sw.js            service worker
+        ├── manifest.webmanifest
+        └── icons/           icon.svg · icon-192.png · icon-512.png · icon-512-maskable.png
 ```
+
+`backend/app.py` resolves the frontend by `__file__` (override with `NEMESIS_FRONTEND_DIR`),
+so the two trees stay decoupled — `Procfile`/`render.yaml`/`ecosystem.config.cjs` all run from `backend/`.
 
 ---
 
@@ -346,9 +345,10 @@ nemesis/                     ← repo root (Procfile, render.yaml, README.md, ec
 | Symptom | Fix |
 |---|---|
 | Every reply is *"Recalibrating... state your point again."* | `GROQ_API_KEY` is missing/invalid, or `GROQ_MODEL` isn't a valid Groq id. Check `/health` → `llm_configured`. |
+| Replies are empty/instant with `openai/gpt-oss-*` models | Reasoning models spend the token budget on hidden reasoning first. Keep `GROQ_REASONING_EFFORT=low` set (the default) so `message.content` is not empty. |
 | `RuntimeError: SECRET_KEY must be set in production` | Add `SECRET_KEY` in Render env (Blueprint does this automatically). |
 | History disappears after deploy | You're on ephemeral SQLite. Set `DATABASE_URL` or use a Persistent Disk (see [Storage decision](#storage-decision)). |
-| Mic button does nothing | Speech recognition requires Chrome/Edge and HTTPS (or `localhost`). Use the text input elsewhere. |
+| Mic button does nothing | Speech recognition requires Chrome/Edge and HTTPS (or `localhost`). Firefox/Safari have no Web Speech recognition — TTS still works. |
 | 429 responses | Rate limits hit (`RATELIMIT_DEBATE` default 20/min per user). Raise the limit or wait. |
 | `/admin` returns 404 | `ADMIN_ENABLED` is not `true`. 403 means the token is wrong. |
 | Core is flat / no 3D | WebGL unavailable — the CSS fallback engages automatically (`body.no-webgl`). |

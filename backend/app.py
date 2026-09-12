@@ -26,11 +26,18 @@ from llm_client import (
     counter_argument,
     detect_fallacy,
     scorecard,
+    split_lang_tag,
     stream_counter_argument,
 )
 from prompts import DIFFICULTIES, LANGUAGES, PERSONAS
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# The browser assets live in the sibling ``frontend/`` folder so the repo is
+# split cleanly into frontend/ and backend/ while the internal layout of each
+# half is preserved. ``NEMESIS_FRONTEND_DIR`` allows overriding the location.
+FRONTEND_DIR = os.environ.get("NEMESIS_FRONTEND_DIR") or os.path.join(os.path.dirname(BASE_DIR), "frontend")
+STATIC_DIR = os.path.join(FRONTEND_DIR, "static")
+TEMPLATE_DIR = os.path.join(FRONTEND_DIR, "templates")
 
 # --------------------------------------------------------------------------
 # Structured logging (JSON lines to stdout — Render captures these)
@@ -60,7 +67,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 # --------------------------------------------------------------------------
 # App factory bits
 # --------------------------------------------------------------------------
-app = Flask(__name__, static_folder="static", template_folder="templates")
+app = Flask(__name__, static_folder=STATIC_DIR, template_folder=TEMPLATE_DIR)
 app.config.update(
     SECRET_KEY=config.SECRET_KEY,
     SESSION_COOKIE_HTTPONLY=True,
@@ -167,14 +174,14 @@ def _clean_text(value, limit=2000) -> str:
 
 
 def _debate_params(body: dict) -> dict:
-    persona = body.get("persona", "ultron")
+    persona = body.get("persona", "jarvis")
     difficulty = body.get("difficulty", "adept")
-    lang = _clean_text(body.get("language", "en"), 8) or "en"
+    lang = _clean_text(body.get("language", "auto"), 8) or "auto"
     return {
-        "persona": persona if persona in PERSONAS else "ultron",
+        "persona": persona if persona in PERSONAS else "jarvis",
         "difficulty": difficulty if difficulty in DIFFICULTIES else "adept",
         "aggression": max(0, min(100, int(body.get("aggression", 50) or 50))),
-        "language": lang if lang.split("-")[0] in LANGUAGES else "en",
+        "language": lang if lang.split("-")[0] in LANGUAGES else "auto",
         "history": (body.get("history") or [])[-8:],
     }
 
@@ -197,14 +204,14 @@ def index():
 
 @app.route("/manifest.webmanifest")
 def manifest():
-    resp = send_from_directory(os.path.join(BASE_DIR, "static"), "manifest.webmanifest")
+    resp = send_from_directory(STATIC_DIR, "manifest.webmanifest")
     resp.headers["Content-Type"] = "application/manifest+json"
     return resp
 
 
 @app.route("/sw.js")
 def service_worker():
-    resp = send_from_directory(os.path.join(BASE_DIR, "static"), "sw.js")
+    resp = send_from_directory(STATIC_DIR, "sw.js")
     resp.headers["Cache-Control"] = "no-cache"
     resp.headers["Service-Worker-Allowed"] = "/"
     return resp
@@ -265,11 +272,12 @@ def debate():
     if not opinion:
         return jsonify({"error": "empty", "message": "State your point first."}), 400
     p = _debate_params(body)
-    counter, _ = _timed(
+    raw, _ = _timed(
         "debate",
         lambda: counter_argument(opinion, p["persona"], p["history"], p["difficulty"], p["aggression"], p["language"]),
     )
-    return jsonify({"counter_argument": counter, "model": MODEL})
+    counter, lang = split_lang_tag(raw)
+    return jsonify({"counter_argument": counter, "lang": lang, "model": MODEL})
 
 
 @app.route("/api/debate/stream", methods=["POST"])
@@ -296,7 +304,8 @@ def debate_stream():
         finally:
             ms = int((time.perf_counter() - t0) * 1000)
             database.log_event("INFO", "debate_stream", request_id, MODEL, ms, "ok")
-        yield f"event: done\ndata: {json.dumps({'text': ''.join(full).strip(), 'latency_ms': ms})}\n\n"
+        clean, lang = split_lang_tag("".join(full))
+        yield f"event: done\ndata: {json.dumps({'text': clean, 'lang': lang, 'latency_ms': ms})}\n\n"
 
     headers = {
         "Content-Type": "text/event-stream",
@@ -426,6 +435,7 @@ def settings_endpoint():
     allowed = {
         "persona", "difficulty", "aggression", "language", "theme", "wakePhrase",
         "timerEnabled", "timerSeconds", "voiceProfiles", "ttsEnabled", "autoListen",
+        "ttsVolume",
     }
     clean = {k: v for k, v in body.items() if k in allowed}
     database.save_settings(g.uid, clean)

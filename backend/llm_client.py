@@ -2,10 +2,12 @@
 
 Features
 --------
-* Model configurable via ``GROQ_MODEL`` (default ``llama-3.3-70b-versatile``).
+* Model configurable via ``GROQ_MODEL`` (e.g. ``llama-3.3-70b-versatile``).
 * Retry with exponential backoff + jitter on transient errors.
 * Graceful in-character fallbacks instead of raw errors.
 * Streaming generator for the SSE debate endpoint.
+* Spoken-language auto-detect: the model appends a ``(lang:xx)`` tag in AUTO
+  mode; ``split_lang_tag`` strips it and returns the ISO code.
 """
 
 from __future__ import annotations
@@ -18,12 +20,7 @@ import time
 from typing import Iterator
 
 import config
-from prompts import (
-    FALLACY_PROMPT,
-    SCORECARD_PROMPT,
-    STRENGTH_PROMPT,
-    build_debate_system,
-)
+from prompts import build_persona_system
 
 log = logging.getLogger("nemesis.llm")
 
@@ -39,6 +36,64 @@ FALLBACK_SCORECARD = {
     "weaknesses": ["Scoring systems were offline — verdict withheld."],
     "summary": "Recalibrating. The verdict could not be computed this round.",
 }
+
+# Reasoning models (openai/gpt-oss-*, o-series) burn completion tokens on hidden
+# chain-of-thought before writing a single visible word. Our prompts cap replies
+# at 45-120 words, so without extra headroom the whole budget vanishes into
+# reasoning and ``message.content`` comes back empty. Give them slack and ask
+# for the cheapest reasoning tier.
+_REASONING_HEADROOM = 512
+
+
+def _model_kwargs(max_tokens: int) -> dict:
+    """Build per-request kwargs, adding reasoning controls when configured.
+
+    Non-reasoning models (llama, mixtral, ...) simply ignore the extra fields,
+    so this stays safe to leave on for every deployment.
+    """
+    kwargs = {"model": MODEL, "max_tokens": max_tokens}
+    effort = getattr(config, "GROQ_REASONING_EFFORT", "")
+    if effort:
+        kwargs["max_tokens"] = max_tokens + _REASONING_HEADROOM
+        kwargs["reasoning_effort"] = effort
+    return kwargs
+
+
+# Analysis prompts (JSON-only; used by the HUD panels and scorecard).
+FALLACY_PROMPT = (
+    "Analyze this argument for logical fallacies (hasty generalization, false "
+    "dichotomy, ad hominem, slippery slope, appeal to emotion, straw man, circular "
+    "reasoning, appeal to authority, red herring, etc). Reply ONLY in strict JSON: "
+    '{"fallacy": "name or None", "explanation": "1-2 sentences or empty string"}'
+)
+
+SCORECARD_PROMPT = (
+    "Review this conversation transcript. Score both sides out of 100 (must sum to 100). "
+    "List 2-3 user strengths and 2-3 user weaknesses. Reply ONLY in strict JSON: "
+    '{"score_you": int, "score_nemesis": int, "strengths": [strings], '
+    '"weaknesses": [strings], "summary": "1-2 sentence overall verdict"}'
+)
+
+STRENGTH_PROMPT = (
+    "Rate the persuasive strength of the user's latest statement from 0 to 100, "
+    "considering evidence, logic, relevance and clarity. Reply ONLY in strict JSON: "
+    '{"strength": int, "label": "2-4 word verdict"}'
+)
+
+# Trailing language tag the model emits in AUTO mode, e.g. "Hola (lang:es)".
+LANG_TAG_RE = re.compile(r"\(\s*lang\s*:\s*([A-Za-z]{2})\s*\)\s*[.。！!．]*\s*$")
+
+
+def split_lang_tag(text: str) -> tuple[str, str | None]:
+    """Split a model reply into (clean_text, iso_code_or_None)."""
+    if not text:
+        return "", None
+    stripped = text.strip()
+    match = LANG_TAG_RE.search(stripped)
+    if match:
+        code = match.group(1).lower()
+        return stripped[: match.start()].rstrip(), code
+    return stripped, None
 
 _client = None
 
@@ -102,13 +157,12 @@ def _with_retries(fn, *, op: str):
 def _chat(system: str, user: str, max_tokens: int, temperature: float = 0.7, *, op: str) -> str:
     def call():
         response = _get_client().chat.completions.create(
-            model=MODEL,
             messages=[
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
-            max_tokens=max_tokens,
             temperature=temperature,
+            **_model_kwargs(max_tokens),
         )
         return (response.choices[0].message.content or "").strip()
 
@@ -116,7 +170,7 @@ def _chat(system: str, user: str, max_tokens: int, temperature: float = 0.7, *, 
 
 
 def _build_messages(opinion, persona, history, difficulty, aggression, language):
-    system, diff = build_debate_system(persona, difficulty, int(aggression or 50), language)
+    system, diff = build_persona_system(persona, difficulty, int(aggression or 50), language)
     messages = [{"role": "system", "content": system}]
     for item in history or []:
         # accept both [role, text] pairs and {"role":..,"text":..} dicts
@@ -134,15 +188,18 @@ def _build_messages(opinion, persona, history, difficulty, aggression, language)
 # Public API
 # --------------------------------------------------------------------------
 def counter_argument(opinion, persona, history, difficulty="adept", aggression=50, language="en") -> str:
-    """Return the strongest counter-argument to the user's opinion (non-streaming)."""
+    """Return the persona's spoken reply to the user's statement (non-streaming).
+
+    The reply may end with a ``(lang:xx)`` auto-detect tag; callers that speak
+    the text should run ``split_lang_tag`` on the result first.
+    """
     messages, diff = _build_messages(opinion, persona, history, difficulty, aggression, language)
 
     def call():
         response = _get_client().chat.completions.create(
-            model=MODEL,
             messages=messages,
-            max_tokens=diff["max_tokens"],
             temperature=diff["temperature"],
+            **_model_kwargs(diff["max_tokens"]),
         )
         return (response.choices[0].message.content or "").strip()
 
@@ -165,11 +222,10 @@ def stream_counter_argument(
 
     def open_stream():
         return _get_client().chat.completions.create(
-            model=MODEL,
             messages=messages,
-            max_tokens=diff["max_tokens"],
             temperature=diff["temperature"],
             stream=True,
+            **_model_kwargs(diff["max_tokens"]),
         )
 
     try:

@@ -1,9 +1,9 @@
 // Local/sandbox verification only — mirrors the Render Procfile command.
-// Production on Render runs: cd nemesis && gunicorn app:app -c gunicorn.conf.py
+// Production on Render runs: cd backend && gunicorn app:app -c gunicorn.conf.py
 module.exports = {
   apps: [{
     name: 'nemesis',
-    cwd: '/home/user/webapp/nemesis',
+    cwd: __dirname + '/backend',
     script: 'gunicorn',
     args: 'app:app -c gunicorn.conf.py',
     interpreter: 'none',
