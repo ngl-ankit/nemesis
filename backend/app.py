@@ -102,13 +102,26 @@ limiter = Limiter(
     enabled=not config.IS_TESTING,
 )
 
+# --------------------------------------------------------------------------
+# Startup diagnostics
+# --------------------------------------------------------------------------
+print("NEMESIS: Flask app created", flush=True)
+print("NEMESIS: Starting database initialization...", flush=True)
+
 database.init_db()
+
+print("NEMESIS: Database initialization complete", flush=True)
+
 app.register_blueprint(auth.bp)
 # Brute-force protection on credential endpoints (per IP, since no session yet).
 limiter.limit(config.RATELIMIT_AUTH, key_func=get_remote_address)(auth.bp)
 
+print("NEMESIS: Auth blueprint registered", flush=True)
+
 with open(os.path.join(BASE_DIR, "topics.json"), encoding="utf-8") as fh:
     TOPICS = json.load(fh)
+
+print("NEMESIS: Topics loaded", flush=True)
 
 
 # --------------------------------------------------------------------------
@@ -313,7 +326,14 @@ def debate_stream():
                 yield f"event: delta\ndata: {json.dumps({'t': delta})}\n\n"
         finally:
             ms = int((time.perf_counter() - t0) * 1000)
-            database.log_event("INFO" if not fallback else "WARN", "debate_stream", request_id, MODEL, ms, "ok" if not fallback else "fallback")
+            database.log_event(
+                "INFO" if not fallback else "WARN",
+                "debate_stream",
+                request_id,
+                MODEL,
+                ms,
+                "ok" if not fallback else "fallback",
+            )
         clean, lang = split_lang_tag("".join(full))
         yield f"event: done\ndata: {json.dumps({'text': clean, 'lang': lang, 'latency_ms': ms, 'fallback': fallback})}\n\n"
 
