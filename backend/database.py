@@ -24,7 +24,7 @@ from typing import Any, Iterable
 
 import config
 
-_lock = threading.Lock()
+_lock = threading.RLock()
 _pg_pool = None
 IS_POSTGRES = config.DATABASE_URL.startswith(("postgres://", "postgresql://"))
 
