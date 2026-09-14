@@ -1,34 +1,68 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <defs>
     <radialGradient id="glow" cx="50%" cy="50%" r="50%">
-      <stop offset="0" stop-color="#fff1e6" stop-opacity="1"/>
-      <stop offset="0.35" stop-color="#ff8a3c" stop-opacity="0.95"/>
-      <stop offset="0.7" stop-color="#ff3b1f" stop-opacity="0.55"/>
-      <stop offset="1" stop-color="#ff3b1f" stop-opacity="0"/>
+      <stop offset="0" stop-color="#e6fbff" stop-opacity="1"/>
+      <stop offset="0.3" stop-color="#4fe3ff" stop-opacity="0.9"/>
+      <stop offset="0.65" stop-color="#00a8ff" stop-opacity="0.45"/>
+      <stop offset="1" stop-color="#00a8ff" stop-opacity="0"/>
     </radialGradient>
     <linearGradient id="facet" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#ff8a3c"/><stop offset="1" stop-color="#ff3b1f"/>
+      <stop offset="0" stop-color="#4fe3ff"/><stop offset="1" stop-color="#0077b6"/>
+    </linearGradient>
+    <linearGradient id="halo" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#8ef0ff" stop-opacity="0.6"/>
+      <stop offset="1" stop-color="#00a8ff" stop-opacity="0"/>
     </linearGradient>
   </defs>
+
+  <!-- Background -->
   <rect width="512" height="512" rx="96" fill="#020304"/>
-  <circle cx="256" cy="256" r="212" fill="none" stroke="#ff3b1f" stroke-opacity="0.35" stroke-width="3"/>
-  <circle cx="256" cy="256" r="212" fill="none" stroke="#ff8a3c" stroke-width="6" stroke-dasharray="60 340 120 812" stroke-linecap="round"/>
-  <g stroke="#ff8a3c" stroke-opacity="0.7" stroke-width="3">
-    <line x1="256" y1="30" x2="256" y2="50"/><line x1="256" y1="462" x2="256" y2="482"/>
-    <line x1="30" y1="256" x2="50" y2="256"/><line x1="462" y1="256" x2="482" y2="256"/>
-    <line x1="96" y1="96" x2="110" y2="110"/><line x1="416" y1="96" x2="402" y2="110"/>
-    <line x1="96" y1="416" x2="110" y2="402"/><line x1="416" y1="416" x2="402" y2="402"/>
+
+  <!-- Outer holographic rings -->
+  <circle cx="256" cy="256" r="230" fill="none" stroke="#00a8ff" stroke-opacity="0.12" stroke-width="1"/>
+  <circle cx="256" cy="256" r="218" fill="none" stroke="#4fe3ff" stroke-opacity="0.25" stroke-width="2" stroke-dasharray="4 8"/>
+  <circle cx="256" cy="256" r="210" fill="none" stroke="#00a8ff" stroke-opacity="0.35" stroke-width="3" stroke-dasharray="80 340 120 812" stroke-linecap="round"/>
+
+  <!-- Crosshair / HUD ticks -->
+  <g stroke="#4fe3ff" stroke-opacity="0.5" stroke-width="2" stroke-linecap="round">
+    <line x1="256" y1="28" x2="256" y2="56"/>
+    <line x1="256" y1="456" x2="256" y2="484"/>
+    <line x1="28" y1="256" x2="56" y2="256"/>
+    <line x1="456" y1="256" x2="484" y2="256"/>
+    <line x1="88" y1="88" x2="108" y2="108"/>
+    <line x1="424" y1="88" x2="404" y2="108"/>
+    <line x1="88" y1="424" x2="108" y2="404"/>
+    <line x1="424" y1="424" x2="404" y2="404"/>
   </g>
-  <circle cx="256" cy="256" r="160" fill="none" stroke="#00d2ff" stroke-opacity="0.35" stroke-width="2" stroke-dasharray="8 14"/>
-  <circle cx="256" cy="256" r="150" fill="url(#glow)"/>
+
+  <!-- Inner halo ring -->
+  <circle cx="256" cy="256" r="170" fill="none" stroke="url(#halo)" stroke-width="14" opacity="0.35"/>
+
+  <!-- Core glow -->
+  <circle cx="256" cy="256" r="148" fill="url(#glow)"/>
+
+  <!-- Central reactor shape (hexagonal core) -->
   <g transform="translate(256 256)">
-    <polygon points="0,-104 90,-52 90,52 0,104 -90,52 -90,-52" fill="#1a0602" stroke="url(#facet)" stroke-width="4"/>
-    <polygon points="0,-104 90,-52 0,0" fill="#ff8a3c" fill-opacity="0.85"/>
-    <polygon points="90,-52 90,52 0,0" fill="#ff5a2a" fill-opacity="0.85"/>
-    <polygon points="90,52 0,104 0,0" fill="#ff3b1f" fill-opacity="0.8"/>
-    <polygon points="0,104 -90,52 0,0" fill="#c92a12" fill-opacity="0.8"/>
-    <polygon points="-90,52 -90,-52 0,0" fill="#ff5a2a" fill-opacity="0.7"/>
-    <polygon points="-90,-52 0,-104 0,0" fill="#ffb27a" fill-opacity="0.85"/>
-    <polygon points="0,-42 36,-21 36,21 0,42 -36,21 -36,-21" fill="#fff1e6"/>
+    <!-- Outer hexagon frame -->
+    <polygon points="0,-118 102,-59 102,59 0,118 -102,59 -102,-59"
+             fill="#04121f" stroke="url(#facet)" stroke-width="5"/>
+
+    <!-- Faceted inner body -->
+    <polygon points="0,-118 102,-59 0,0" fill="#4fe3ff" fill-opacity="0.18"/>
+    <polygon points="102,-59 102,59 0,0" fill="#00a8ff" fill-opacity="0.22"/>
+    <polygon points="102,59 0,118 0,0" fill="#0077b6" fill-opacity="0.25"/>
+    <polygon points="0,118 -102,59 0,0" fill="#005f8a" fill-opacity="0.22"/>
+    <polygon points="-102,59 -102,-59 0,0" fill="#00a8ff" fill-opacity="0.18"/>
+    <polygon points="-102,-59 0,-118 0,0" fill="#4fe3ff" fill-opacity="0.2"/>
+
+    <!-- Inner bright core -->
+    <polygon points="0,-46 40,-23 40,23 0,46 -40,23 -40,-23"
+             fill="#e6fbff" fill-opacity="0.95"/>
+    <polygon points="0,-18 16,-9 16,9 0,18 -16,9 -16,-9"
+             fill="#ffffff" fill-opacity="0.9"/>
+
+    <!-- Highlight edge strokes -->
+    <polygon points="0,-118 102,-59 0,0" fill="none" stroke="#8ef0ff" stroke-opacity="0.35" stroke-width="1.5"/>
+    <polygon points="0,-118 -102,-59 0,0" fill="none" stroke="#8ef0ff" stroke-opacity="0.35" stroke-width="1.5"/>
   </g>
 </svg>
