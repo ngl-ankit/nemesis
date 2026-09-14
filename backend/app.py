@@ -18,13 +18,16 @@ from flask_limiter.util import get_remote_address
 from werkzeug.exceptions import HTTPException
 
 import achievements as ach
+import auth
 import config
 import database
+import scoring
 from llm_client import (
     MODEL,
     argument_strength,
     counter_argument,
     detect_fallacy,
+    is_configured,
     scorecard,
     split_lang_tag,
     stream_counter_argument,
@@ -73,7 +76,8 @@ app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
     SESSION_COOKIE_SECURE=config.IS_PRODUCTION,
-    PERMANENT_SESSION_LIFETIME=timedelta(days=365),
+    SESSION_COOKIE_NAME="nemesis_session",
+    PERMANENT_SESSION_LIFETIME=timedelta(days=config.SESSION_DAYS),
     MAX_CONTENT_LENGTH=256 * 1024,
     JSON_SORT_KEYS=False,
 )
@@ -84,8 +88,8 @@ if config.CORS_ORIGINS:
 
 
 def _rate_key() -> str:
-    """Rate-limit per user session when available, otherwise per IP."""
-    uid = session.get("uid")
+    """Rate-limit per authenticated user when available, otherwise per IP."""
+    uid = session.get("user_id")
     return f"u:{uid}" if uid else f"ip:{get_remote_address()}"
 
 
@@ -99,6 +103,9 @@ limiter = Limiter(
 )
 
 database.init_db()
+app.register_blueprint(auth.bp)
+# Brute-force protection on credential endpoints (per IP, since no session yet).
+limiter.limit(config.RATELIMIT_AUTH, key_func=get_remote_address)(auth.bp)
 
 with open(os.path.join(BASE_DIR, "topics.json"), encoding="utf-8") as fh:
     TOPICS = json.load(fh)
@@ -111,10 +118,10 @@ with open(os.path.join(BASE_DIR, "topics.json"), encoding="utf-8") as fh:
 def _before():
     g.request_id = request.headers.get("X-Request-ID") or uuid.uuid4().hex[:12]
     g.t0 = time.perf_counter()
-    if "uid" not in session:
-        session["uid"] = secrets.token_urlsafe(24)
-        session.permanent = True
-    g.uid = session["uid"]
+    g.uid = None
+    if request.path.startswith("/api/") and not auth.is_public_path(request.path):
+        if auth.current_user() is None:
+            return jsonify({"error": "unauthorized", "message": "Sign in to continue."}), 401
 
 
 @app.after_request
@@ -148,7 +155,7 @@ def _too_many(e):
 def _not_found(e):
     if request.path.startswith("/api/"):
         return jsonify({"error": "not_found"}), 404
-    return render_template("index.html", version=config.APP_VERSION), 404
+    return render_template("index.html", version=config.APP_VERSION, model=MODEL), 404
 
 
 @app.errorhandler(Exception)
@@ -199,7 +206,7 @@ def _timed(kind: str, fn):
 # --------------------------------------------------------------------------
 @app.route("/")
 def index():
-    return render_template("index.html", version=config.APP_VERSION)
+    return render_template("index.html", version=config.APP_VERSION, model=MODEL)
 
 
 @app.route("/manifest.webmanifest")
@@ -234,7 +241,7 @@ def health():
                 "db": "postgres" if database.IS_POSTGRES else "sqlite",
                 "db_ok": db_ok,
                 "model": MODEL,
-                "llm_configured": bool(config.GROQ_API_KEY),
+                "llm_configured": is_configured(),
                 "version": config.APP_VERSION,
             }
         ),
@@ -251,7 +258,8 @@ def client_config():
             "difficulties": list(DIFFICULTIES.keys()),
             "languages": LANGUAGES,
             "version": config.APP_VERSION,
-            "llm_configured": bool(config.GROQ_API_KEY),
+            "llm_configured": is_configured(),
+            "registration_open": config.ALLOW_REGISTRATION,
         }
     )
 
@@ -272,12 +280,12 @@ def debate():
     if not opinion:
         return jsonify({"error": "empty", "message": "State your point first."}), 400
     p = _debate_params(body)
-    raw, _ = _timed(
+    (raw, fallback), _ = _timed(
         "debate",
         lambda: counter_argument(opinion, p["persona"], p["history"], p["difficulty"], p["aggression"], p["language"]),
     )
     counter, lang = split_lang_tag(raw)
-    return jsonify({"counter_argument": counter, "lang": lang, "model": MODEL})
+    return jsonify({"counter_argument": counter, "lang": lang, "model": MODEL, "fallback": fallback})
 
 
 @app.route("/api/debate/stream", methods=["POST"])
@@ -294,18 +302,20 @@ def debate_stream():
     def generate():
         t0 = time.perf_counter()
         full = []
+        fallback = False
         yield f"event: meta\ndata: {json.dumps({'model': MODEL, 'request_id': request_id})}\n\n"
         try:
-            for delta in stream_counter_argument(
+            for delta, is_fallback in stream_counter_argument(
                 opinion, p["persona"], p["history"], p["difficulty"], p["aggression"], p["language"]
             ):
+                fallback = fallback or is_fallback
                 full.append(delta)
                 yield f"event: delta\ndata: {json.dumps({'t': delta})}\n\n"
         finally:
             ms = int((time.perf_counter() - t0) * 1000)
-            database.log_event("INFO", "debate_stream", request_id, MODEL, ms, "ok")
+            database.log_event("INFO" if not fallback else "WARN", "debate_stream", request_id, MODEL, ms, "ok" if not fallback else "fallback")
         clean, lang = split_lang_tag("".join(full))
-        yield f"event: done\ndata: {json.dumps({'text': clean, 'lang': lang, 'latency_ms': ms})}\n\n"
+        yield f"event: done\ndata: {json.dumps({'text': clean, 'lang': lang, 'latency_ms': ms, 'fallback': fallback})}\n\n"
 
     headers = {
         "Content-Type": "text/event-stream",
@@ -321,7 +331,7 @@ def debate_stream():
 def fallacy():
     statement = _clean_text(_body().get("statement"))
     if not statement:
-        return jsonify({"fallacy_name": "None", "explanation": ""})
+        return jsonify({"fallacy_name": "None", "explanation": "", "confidence": 0, "fallback": False})
     result, _ = _timed("fallacy", lambda: detect_fallacy(statement))
     return jsonify(result)
 
@@ -331,7 +341,7 @@ def fallacy():
 def strength():
     statement = _clean_text(_body().get("statement"))
     if not statement:
-        return jsonify({"strength": 0, "label": "No signal"})
+        return jsonify({"strength": 0, "label": "No signal", "rubric": {}, "fallback": False})
     result, _ = _timed("strength", lambda: argument_strength(statement))
     return jsonify(result)
 
@@ -339,10 +349,35 @@ def strength():
 @app.route("/api/scorecard", methods=["POST"])
 @limiter.limit(config.RATELIMIT_SCORECARD)
 def scorecard_endpoint():
-    transcript = _clean_text(_body().get("transcript"), 12000)
+    body = _body()
+    turns_list = body.get("turns") if isinstance(body.get("turns"), list) else []
+    transcript = _clean_text(body.get("transcript"), 12000)
+    if not transcript and turns_list:
+        transcript = "\n".join(
+            ("You: " if str(t.get("role")) == "user" else "Nemesis: ") + _clean_text(t.get("text"), 1500)
+            for t in turns_list
+            if isinstance(t, dict) and t.get("text")
+        )[:12000]
     if not transcript:
         return jsonify({"error": "empty", "message": "Nothing to score yet."}), 400
-    result, _ = _timed("scorecard", lambda: scorecard(transcript))
+    fallacies = [
+        _clean_text(f.get("name") if isinstance(f, dict) else f, 60)
+        for f in (body.get("fallacies") or [])
+        if (f.get("name") if isinstance(f, dict) else f)
+    ][:50]
+    strengths = [s for s in (body.get("strengths") or []) if isinstance(s, (int, float))][:50]
+    user_lines = [t for t in turns_list if isinstance(t, dict) and str(t.get("role")) == "user"]
+    if user_lines:
+        turns = len(user_lines)
+        user_words = sum(scoring.word_count(t.get("text")) for t in user_lines)
+    else:
+        lines = [ln for ln in transcript.splitlines() if ln.startswith("You:")]
+        turns = max(1, len(lines))
+        user_words = sum(scoring.word_count(ln[4:]) for ln in lines)
+    result, _ = _timed(
+        "scorecard",
+        lambda: scorecard(transcript, fallacies=fallacies, strengths=strengths, turns=turns, user_words=user_words),
+    )
     return jsonify(result)
 
 
@@ -370,6 +405,7 @@ def session_save():
         "language": p["language"],
         "duration_s": max(0, int(body.get("duration_s", 0) or 0)),
         "strengths": strengths,
+        "scorecard": body.get("scorecard") if isinstance(body.get("scorecard"), dict) else None,
     }
     session_id = database.save_session(g.uid, **record)
     stats = database.get_stats(g.uid)
@@ -434,12 +470,12 @@ def settings_endpoint():
     body = _body()
     allowed = {
         "persona", "difficulty", "aggression", "language", "theme", "wakePhrase",
-        "timerEnabled", "timerSeconds", "voiceProfiles", "ttsEnabled", "autoListen",
-        "ttsVolume",
+        "timerEnabled", "timerSecs", "voiceProfile", "ttsEnabled", "autoListen", "ttsVolume",
     }
     clean = {k: v for k, v in body.items() if k in allowed}
-    database.save_settings(g.uid, clean)
-    return jsonify({"ok": True, "settings": clean})
+    merged = {**database.get_settings(g.uid), **clean}
+    database.save_settings(g.uid, merged)
+    return jsonify({"ok": True, "settings": merged})
 
 
 # --------------------------------------------------------------------------
@@ -468,6 +504,8 @@ def admin_diagnostics():
             "db": "postgres" if database.IS_POSTGRES else "sqlite",
             "version": config.APP_VERSION,
             "env": config.ENV_NAME,
+            "users": database.count_users(),
+            "llm_configured": is_configured(),
             "latency": database.latency_summary(),
             "events": database.recent_events(100),
         }

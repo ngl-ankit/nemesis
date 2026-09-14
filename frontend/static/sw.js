@@ -6,7 +6,7 @@
  *  - /api/*, /health, /admin: network-only, never cached (per-user, streamed).
  *  - Cross-origin (fonts, Three.js CDN): stale-while-revalidate.
  *  - Navigations fall back to the cached shell when offline. */
-const VERSION = "nemesis-v7";
+const VERSION = "nemesis-v8";
 const SHELL_CACHE = `${VERSION}-shell`;
 const RUNTIME_CACHE = `${VERSION}-runtime`;
 const SHELL = ["/", "/static/style.css", "/static/js/script.js", "/static/js/reactor.js",

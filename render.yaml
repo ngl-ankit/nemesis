@@ -1,7 +1,10 @@
 # Render Blueprint — one-click deploy: https://render.com/docs/blueprint-spec
 #
-# Storage decision: managed Postgres via DATABASE_URL (survives deploys and
-# restarts, works with >1 gunicorn worker, no single-disk lock-in). See README.
+# Provisions the Nemesis web service (Flask + Gunicorn, serving the frontend
+# from the same origin) and a managed Postgres database. User accounts,
+# sessions, settings and achievements live in Postgres so they survive deploys.
+#
+# AI model: openai/gpt-oss-20b via an OpenAI-compatible endpoint (Groq by default).
 services:
   - type: web
     name: nemesis
@@ -9,7 +12,7 @@ services:
     plan: free
     region: oregon
     rootDir: backend
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
     startCommand: gunicorn app:app -c gunicorn.conf.py
     healthCheckPath: /health
     autoDeploy: true
@@ -18,14 +21,18 @@ services:
         value: 3.12.7
       - key: FLASK_ENV
         value: production
-      - key: GROQ_API_KEY
+      - key: LLM_API_KEY
         sync: false            # set in the Render dashboard — never commit it
-      - key: GROQ_MODEL
-        value: llama-3.3-70b-versatile
-      - key: GROQ_REASONING_EFFORT
-        value: low              # required for openai/gpt-oss-* reasoning models
+      - key: LLM_MODEL
+        value: openai/gpt-oss-20b
+      - key: LLM_BASE_URL
+        value: https://api.groq.com/openai/v1
+      - key: LLM_REASONING_EFFORT
+        value: low             # gpt-oss-20b is a reasoning model; keeps spoken replies fast
       - key: SECRET_KEY
-        generateValue: true    # Render generates a strong random value
+        generateValue: true    # signs the session cookie
+      - key: SESSION_DAYS
+        value: "30"
       - key: DATABASE_URL
         fromDatabase:
           name: nemesis-db
@@ -38,8 +45,8 @@ services:
         value: "false"
       - key: ADMIN_TOKEN
         generateValue: true
-      # - key: CORS_ORIGINS        # only if a separate frontend origin ever calls /api
-      #   value: https://example.com
+      # - key: DISABLE_REGISTRATION   # "true" locks the instance to existing accounts
+      #   value: "true"
 
 databases:
   - name: nemesis-db

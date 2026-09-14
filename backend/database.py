@@ -8,8 +8,8 @@ Two interchangeable backends behind one tiny compatibility layer:
   Persistent Disk mounted at ``DATABASE_PATH``.
 
 All queries are written with ``?`` placeholders and translated to ``%s`` for
-Postgres. Every row is scoped to a ``user_id`` (an opaque token stored in the
-signed session cookie) so history is per-user.
+Postgres. Every row is scoped to a ``user_id`` — the numeric primary key of the
+authenticated account in ``users`` (stored as TEXT) — so history is per-user.
 """
 
 from __future__ import annotations
@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
+import time
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Any, Iterable
@@ -96,10 +97,14 @@ def connection():
             cur.close()
             pool_.putconn(conn)
     else:
-        conn = sqlite3.connect(config.DATABASE_PATH, timeout=10, check_same_thread=False)
+        conn = sqlite3.connect(config.DATABASE_PATH, timeout=30, check_same_thread=False)
         conn.row_factory = sqlite3.Row
         try:
-            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA busy_timeout=30000")
+            try:
+                conn.execute("PRAGMA journal_mode=WAL")
+            except sqlite3.OperationalError:
+                pass  # another worker holds the lock during boot; WAL is only an optimisation
             cur = conn.cursor()
             yield _Cursor(cur, False)
             conn.commit()
@@ -117,6 +122,16 @@ _PK = "SERIAL PRIMARY KEY" if IS_POSTGRES else "INTEGER PRIMARY KEY AUTOINCREMEN
 
 SCHEMA = [
     f"""
+    CREATE TABLE IF NOT EXISTS users (
+        id {_PK},
+        email TEXT NOT NULL UNIQUE,
+        display_name TEXT NOT NULL,
+        password_hash TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        last_login_at TEXT
+    )
+    """,
+    f"""
     CREATE TABLE IF NOT EXISTS sessions (
         id {_PK},
         user_id TEXT NOT NULL,
@@ -131,7 +146,8 @@ SCHEMA = [
         strengths_json TEXT,
         score_you INTEGER,
         score_nemesis INTEGER,
-        scorecard_text TEXT
+        scorecard_text TEXT,
+        scorecard_json TEXT
     )
     """,
     "CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id, id DESC)",
@@ -169,14 +185,36 @@ SCHEMA = [
 _initialised = False
 
 
+def _migrate(cur) -> None:
+    """Additive migrations for databases created by earlier versions."""
+    if IS_POSTGRES:
+        cur.execute("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS scorecard_json TEXT")
+        return
+    cols = {r["name"] for r in cur.execute("PRAGMA table_info(sessions)").fetchall()}
+    if "scorecard_json" not in cols:
+        cur.execute("ALTER TABLE sessions ADD COLUMN scorecard_json TEXT")
+
+
 def init_db() -> None:
     global _initialised
     if _initialised:
         return
-    with connection() as cur:
-        for stmt in SCHEMA:
-            cur.execute(stmt)
-    _initialised = True
+    with _lock:
+        if _initialised:
+            return
+        # Several Gunicorn workers boot at once; SQLite may briefly be locked.
+        for attempt in range(5):
+            try:
+                with connection() as cur:
+                    for stmt in SCHEMA:
+                        cur.execute(stmt)
+                    _migrate(cur)
+                break
+            except sqlite3.OperationalError as exc:
+                if "locked" not in str(exc).lower() or attempt == 4:
+                    raise
+                time.sleep(0.3 * (attempt + 1))
+        _initialised = True
 
 
 def _now() -> str:
@@ -195,6 +233,7 @@ def _row_to_session(row: dict, full: bool) -> dict:
         "score_you": row["score_you"] or 0,
         "score_nemesis": row["score_nemesis"] or 0,
         "scorecard_text": row["scorecard_text"] or "",
+        "outcome": _outcome(row["score_you"] or 0, row["score_nemesis"] or 0),
         "fallacy_count": len(json.loads(row["fallacies_json"] or "[]")),
         "turns": len([m for m in json.loads(row["transcript_json"] or "[]") if m.get("role") == "user"]),
     }
@@ -202,14 +241,85 @@ def _row_to_session(row: dict, full: bool) -> dict:
         out["transcript"] = json.loads(row["transcript_json"] or "[]")
         out["fallacies"] = json.loads(row["fallacies_json"] or "[]")
         out["strengths"] = json.loads(row["strengths_json"] or "[]")
+        try:
+            out["scorecard"] = json.loads(row.get("scorecard_json") or "null")
+        except (TypeError, ValueError):
+            out["scorecard"] = None
     return out
+
+
+def _outcome(score_you: int, score_nemesis: int) -> str:
+    margin = int(score_you) - int(score_nemesis)
+    return "win" if margin >= 4 else "loss" if margin <= -4 else "draw"
+
+
+# --------------------------------------------------------------------------
+# Users (authentication)
+# --------------------------------------------------------------------------
+def _row_to_user(row: dict | None) -> dict | None:
+    if not row:
+        return None
+    return {
+        "id": int(row["id"]), "email": row["email"], "display_name": row["display_name"],
+        "password_hash": row["password_hash"], "created_at": row["created_at"],
+        "last_login_at": row.get("last_login_at"),
+    }
+
+
+def create_user(email: str, display_name: str, password_hash: str) -> int:
+    init_db()
+    with connection() as cur:
+        sql = "INSERT INTO users (email, display_name, password_hash, created_at) VALUES (?, ?, ?, ?)"
+        params = (email, display_name, password_hash, _now())
+        if IS_POSTGRES:
+            cur.execute(sql + " RETURNING id", params)
+            return int(cur.fetchone()["id"])
+        cur.execute(sql, params)
+        return int(cur.lastrowid)
+
+
+def get_user_by_email(email: str) -> dict | None:
+    init_db()
+    with connection() as cur:
+        return _row_to_user(cur.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone())
+
+
+def get_user_by_id(user_id: int) -> dict | None:
+    init_db()
+    with connection() as cur:
+        return _row_to_user(cur.execute("SELECT * FROM users WHERE id = ?", (int(user_id),)).fetchone())
+
+
+def touch_login(user_id: int) -> None:
+    init_db()
+    with connection() as cur:
+        cur.execute("UPDATE users SET last_login_at = ? WHERE id = ?", (_now(), int(user_id)))
+
+
+def update_user_password(user_id: int, password_hash: str) -> None:
+    init_db()
+    with connection() as cur:
+        cur.execute("UPDATE users SET password_hash = ? WHERE id = ?", (password_hash, int(user_id)))
+
+
+def update_user_name(user_id: int, display_name: str) -> None:
+    init_db()
+    with connection() as cur:
+        cur.execute("UPDATE users SET display_name = ? WHERE id = ?", (display_name, int(user_id)))
+
+
+def count_users() -> int:
+    init_db()
+    with connection() as cur:
+        row = cur.execute("SELECT COUNT(*) AS n FROM users").fetchone()
+    return int(row["n"]) if row else 0
 
 
 # --------------------------------------------------------------------------
 # Sessions
 # --------------------------------------------------------------------------
 def save_session(
-    user_id: str,
+    user_id: str | int,
     topic: str,
     transcript: list,
     fallacies: list,
@@ -221,13 +331,14 @@ def save_session(
     language: str = "en",
     duration_s: int = 0,
     strengths: list | None = None,
+    scorecard: dict | None = None,
 ) -> int:
     init_db()
     with connection() as cur:
         sql = (
             "INSERT INTO sessions (user_id, created_at, topic, persona, difficulty, language, duration_s, "
-            "transcript_json, fallacies_json, strengths_json, score_you, score_nemesis, scorecard_text) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+            "transcript_json, fallacies_json, strengths_json, score_you, score_nemesis, scorecard_text, scorecard_json) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         )
         params = (
             user_id,
@@ -243,6 +354,7 @@ def save_session(
             int(score_you),
             int(score_nemesis),
             scorecard_text[:2000],
+            json.dumps(scorecard) if scorecard else None,
         )
         if IS_POSTGRES:
             cur.execute(sql + " RETURNING id", params)
@@ -293,6 +405,8 @@ def get_stats(user_id: str) -> dict:
         return {
             "total_debates": 0,
             "wins": 0,
+            "losses": 0,
+            "draws": 0,
             "avg_score": 0,
             "best_score": 0,
             "most_common_fallacy": None,
@@ -308,7 +422,7 @@ def get_stats(user_id: str) -> dict:
 
     fallacy_totals: dict[str, int] = {}
     persona_counts: dict[str, int] = {}
-    wins = 0
+    wins = losses = draws = 0
     scores = []
     longest_turns = 0
     longest_s = 0
@@ -318,8 +432,11 @@ def get_stats(user_id: str) -> dict:
     for r in rows:
         sy, sn = r["score_you"] or 0, r["score_nemesis"] or 0
         scores.append(sy)
-        won = sy > sn
+        outcome = _outcome(sy, sn)
+        won = outcome == "win"
         wins += int(won)
+        losses += int(outcome == "loss")
+        draws += int(outcome == "draw")
         cur_streak = cur_streak + 1 if won else 0
         best_streak = max(best_streak, cur_streak)
         for f in json.loads(r["fallacies_json"] or "[]"):
@@ -349,6 +466,8 @@ def get_stats(user_id: str) -> dict:
     return {
         "total_debates": total,
         "wins": wins,
+        "losses": losses,
+        "draws": draws,
         "avg_score": round(sum(scores) / total, 1),
         "best_score": max(scores),
         "most_common_fallacy": most_common,

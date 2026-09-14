@@ -1,10 +1,10 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>NEMESIS â€” Holographic Voice AI</title>
-  <meta name="description" content="Nemesis: a voice-only holographic AI companion. Speak, and JARVIS, ULTRON, VISION or THANOS answers â€” in your language." />
+  <title>NEMESIS — Holographic Voice AI</title>
+  <meta name="description" content="Nemesis: a voice-only holographic AI companion. Speak, and JARVIS, ULTRON, VISION or THANOS answers — in your language." />
   <meta name="theme-color" id="meta-theme" content="#030710" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -21,13 +21,43 @@
 <body data-persona="jarvis" data-mode="sleeping" data-state="idle">
   <a class="skip-link" href="#core-btn">Skip to core control</a>
 
+  <!-- Auth gate: the first screen. Nothing below is reachable without a session. -->
+  <section id="auth" class="auth" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+    <div class="auth-frame">
+      <div class="boot-core small" aria-hidden="true"><i></i><i></i><i></i></div>
+      <h1 class="boot-title" id="auth-title">NEMESIS</h1>
+      <p class="boot-sub mono">OPERATOR AUTHENTICATION</p>
+      <div class="auth-tabs" role="tablist">
+        <button type="button" role="tab" id="auth-tab-login" aria-selected="true" data-tab="login">SIGN IN</button>
+        <button type="button" role="tab" id="auth-tab-register" aria-selected="false" data-tab="register">CREATE ACCOUNT</button>
+      </div>
+      <form id="auth-form" class="auth-form" novalidate>
+        <label class="auth-field" id="auth-name-field" hidden>
+          <span class="mono">CALLSIGN</span>
+          <input type="text" id="auth-name" name="display_name" maxlength="40" autocomplete="nickname" placeholder="How should Nemesis address you?" />
+        </label>
+        <label class="auth-field">
+          <span class="mono">EMAIL</span>
+          <input type="email" id="auth-email" name="email" autocomplete="email" required placeholder="operator@example.com" />
+        </label>
+        <label class="auth-field">
+          <span class="mono">PASSWORD</span>
+          <input type="password" id="auth-password" name="password" autocomplete="current-password" minlength="8" required placeholder="At least 8 characters" />
+        </label>
+        <p class="auth-error mono" id="auth-error" role="alert" hidden></p>
+        <button type="submit" id="auth-submit" class="btn primary mono">SIGN IN</button>
+      </form>
+      <p class="boot-note mono" id="auth-note">SESSIONS ARE ENCRYPTED · DATA IS STORED PER OPERATOR</p>
+    </div>
+  </section>
+
   <!-- Boot: first user gesture unlocks audio context + microphone -->
-  <div id="boot" class="boot" role="dialog" aria-modal="true" aria-label="Engage interface">
+  <div id="boot" class="boot" role="dialog" hidden aria-modal="true" aria-label="Engage interface">
     <div class="boot-core" aria-hidden="true"><i></i><i></i><i></i></div>
     <h1 class="boot-title">NEMESIS</h1>
     <p class="boot-sub mono">HOLOGRAPHIC VOICE INTERFACE</p>
     <button id="boot-btn" type="button">TAP TO ENGAGE</button>
-    <p class="boot-note mono">headphones recommended Â· microphone required</p>
+    <p class="boot-note mono">headphones recommended · microphone required</p>
   </div>
 
   <!-- Ambient layered backdrop: persona-specific pattern shown via CSS -->
@@ -41,7 +71,7 @@
   </div>
 
   <div id="offline-banner" class="offline-banner mono" role="status" hidden>
-    <span class="dot"></span> LINK LOST â€” voice systems degraded
+    <span class="dot"></span> LINK LOST — voice systems degraded
   </div>
 
   <!-- Corner HUD brackets + telemetry -->
@@ -49,7 +79,7 @@
     <span class="bracket"></span>
     <div class="telemetry mono">
       <span>SES <b id="tele-session">--------</b></span>
-      <span>MDL <b id="tele-model">--</b></span>
+      <span>MDL <b id="tele-model">{{ model }}</b></span>
     </div>
   </div>
   <div class="hud-corner tr" aria-hidden="true">
@@ -78,9 +108,10 @@
   <header class="topbar" id="topbar">
     <div class="wordmark-wrap">
       <span class="wordmark" id="wordmark">JARVIS</span>
-      <span class="wordmark-sub mono" id="wordmark-sub">NEMESIS Â· ARC SYSTEM</span>
+      <span class="wordmark-sub mono" id="wordmark-sub">NEMESIS · ARC SYSTEM</span>
     </div>
     <nav class="topnav" aria-label="Primary">
+      <span class="operator mono" id="operator-chip" title="Signed in operator"></span>
       <button class="nav-btn" id="nav-topics" type="button" aria-controls="sheet-topics" aria-haspopup="dialog">TOPICS</button>
       <button class="nav-btn" id="nav-history" type="button" aria-controls="sheet-history" aria-haspopup="dialog">ARCHIVE</button>
       <button class="nav-btn" id="nav-stats" type="button" aria-controls="sheet-stats" aria-haspopup="dialog">ANALYTICS</button>
@@ -220,6 +251,7 @@
         <h2 id="sc-title">DEBATE VERDICT</h2>
         <span class="mono" id="sc-meta">--</span>
       </header>
+      <div class="sc-outcome mono"><span id="sc-outcome">--</span><b class="sc-grade" id="sc-grade">-</b></div>
       <div class="sc-radials">
         <div class="radial you">
           <svg viewBox="0 0 120 120" aria-hidden="true">
@@ -241,6 +273,11 @@
       <div class="sc-cols">
         <div><h3 class="mono">STRENGTHS</h3><ul id="sc-strengths"></ul></div>
         <div><h3 class="mono">WEAKNESSES</h3><ul id="sc-weaknesses"></ul></div>
+      </div>
+      <div class="sc-breakdown" id="sc-breakdown-wrap">
+        <h3 class="mono">JUDGE RUBRIC · YOU</h3>
+        <div id="sc-breakdown" class="rubric"></div>
+        <p class="mono fine" id="sc-breakdown-note"></p>
       </div>
       <div class="sc-heat">
         <h3 class="mono">FALLACY HEATMAP</h3>
@@ -342,6 +379,15 @@
       <fieldset>
         <legend class="mono">ACHIEVEMENTS</legend>
         <div id="ach-grid" class="ach-grid"></div>
+      </fieldset>
+      <fieldset>
+        <legend class="mono">ACCOUNT</legend>
+        <p class="account-line"><b id="acct-name">—</b><span class="mono" id="acct-email"></span></p>
+        <input type="text" id="acct-rename" maxlength="40" placeholder="Change callsign" aria-label="Change callsign" />
+        <div class="row">
+          <button class="btn ghost mono small" id="acct-save" type="button">SAVE CALLSIGN</button>
+          <button class="btn ghost mono small danger" id="acct-logout" type="button">SIGN OUT</button>
+        </div>
       </fieldset>
       <p class="mono fine" id="set-footer"></p>
     </div>

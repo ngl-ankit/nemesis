@@ -12,14 +12,9 @@ venv/
 *.log
 
 # Secrets — never commit
-backend/local_config.py
 .env
 backend/.env
-
-# Local scratch / verification artifacts
-_srv.*
-_verify_*.py
-_audit_*.py
+backend/local_config.py
 
 # OS / editor
 .DS_Store

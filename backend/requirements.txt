@@ -1,4 +1,5 @@
 flask>=3.0,<4
+werkzeug>=3.0,<4
 openai>=1.40
 gunicorn>=22.0
 python-dotenv>=1.0
