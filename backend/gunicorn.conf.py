@@ -7,7 +7,7 @@ import multiprocessing
 import os
 
 bind = f"0.0.0.0:{os.environ.get('PORT', '10000')}"
-workers = int(os.environ.get("WEB_CONCURRENCY", max(2, min(4, multiprocessing.cpu_count()))))
+workers = 1
 worker_class = "gthread"
 threads = int(os.environ.get("GUNICORN_THREADS", "8"))
 timeout = int(os.environ.get("GUNICORN_TIMEOUT", "90"))
