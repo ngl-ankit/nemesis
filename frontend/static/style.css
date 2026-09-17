@@ -65,6 +65,7 @@ body[data-persona="thanos"] {
 html { height: 100%; color-scheme: dark; }
 body {
   margin: 0;
+  min-height: 100svh;
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
@@ -218,11 +219,12 @@ body[data-persona="thanos"] .pattern-stars { opacity: 1; }
 }
 body[data-persona="thanos"] .wordmark { font-family: var(--f-royal); letter-spacing: 0.26em; }
 .wordmark-sub { font-size: 9px; color: var(--ink-faint); margin-top: 7px; letter-spacing: 0.24em; }
-.topnav { display: flex; gap: 6px; }
+.topnav { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; min-width: 0; }
 .nav-btn {
   font-family: var(--f-hud); font-weight: 600; font-size: 11px; letter-spacing: 0.16em;
   background: var(--glass); border: 1px solid var(--line-soft); color: var(--ink-dim);
   padding: 9px 13px;
+  flex: 0 1 auto;
   clip-path: polygon(7px 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%, 0 7px);
   transition: color 0.2s, border-color 0.2s, background 0.2s;
 }
@@ -319,9 +321,9 @@ body[data-state="speaking"] .core-btn .core-hit { border-color: rgba(var(--a-rgb
 body[data-state="listening"] .status { color: var(--accent); }
 body[data-state="thinking"] .status { color: var(--a2); }
 body[data-state="speaking"] .status { color: var(--accent); }
-.captured { min-height: 30px; margin: 12px auto 0; max-width: 540px; padding: 0 18px; text-align: center; font-family: var(--f-body); font-style: italic; font-size: clamp(15px, 2.3vw, 19px); line-height: 1.4; color: var(--ink-dim); }
+.captured { min-height: 30px; margin: 12px auto 0; max-width: 540px; padding: 0 18px; text-align: center; font-family: var(--f-body); font-style: italic; font-size: clamp(15px, 2.3vw, 19px); line-height: 1.4; color: var(--ink-dim); overflow-wrap: anywhere; }
 body[data-state="listening"] .captured { color: var(--ink); }
-.reply-line { min-height: 46px; margin: 8px auto 0; max-width: 580px; padding: 0 18px; text-align: center; font-family: var(--f-body); font-size: clamp(14px, 2.1vw, 17px); line-height: 1.5; color: var(--a3); }
+.reply-line { min-height: 46px; margin: 8px auto 0; max-width: 580px; padding: 0 18px; text-align: center; font-family: var(--f-body); font-size: clamp(14px, 2.1vw, 17px); line-height: 1.5; color: var(--a3); overflow-wrap: anywhere; }
 
 /* ---- persona lock --------------------------------------------------------- */
 .persona-lock { display: flex; flex-direction: column; align-items: center; gap: 9px; width: min(100%, 440px); margin-top: 20px; }
@@ -562,6 +564,16 @@ body[data-state="thinking"] .reply-line:empty::after { content: "···"; letter
   .panel-rail .wave { flex: 1 1 100%; height: 42px; }
   .connector { display: none; }
 }
+@media (max-width: 960px) {
+  .topbar { padding-top: calc(38px + var(--sat)); gap: 10px; }
+  .wordmark { letter-spacing: 0.24em; }
+  .wordmark-sub { letter-spacing: 0.18em; }
+  .topnav { width: 100%; justify-content: flex-start; }
+  .topnav .nav-btn { flex: 1 1 calc(50% - 6px); min-width: 118px; text-align: center; }
+  .stage { padding-left: 10px; padding-right: 10px; }
+  .reply-line { max-width: 100%; }
+}
+
 @media (max-width: 760px) {
   :root { --core-size: min(70vw, 280px); }
   .topbar { flex-direction: column; align-items: stretch; gap: 12px; padding-top: calc(44px + var(--sat)); }
@@ -583,6 +595,27 @@ body[data-state="thinking"] .reply-line:empty::after { content: "···"; letter
   .toast { bottom: calc(84px + var(--sab)); }
   .operator { display: none; }
   .rubric { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 560px) {
+  :root { --core-size: min(78vw, 248px); }
+  .topbar { padding: calc(32px + var(--sat)) 12px 0; }
+  .wordmark { font-size: clamp(18px, 7vw, 22px); }
+  .wordmark-sub { margin-top: 5px; font-size: 8px; }
+  .topnav { gap: 5px; }
+  .topnav .nav-btn { min-width: 0; font-size: 9.5px; padding: 8px 6px; }
+  .stage { gap: 8px; padding-top: 2px; }
+  .panel-rail { gap: 8px; }
+  .panel-rail .hud-panel { min-width: 0; }
+  .captured, .reply-line { padding: 0 10px; }
+  .dock { padding-bottom: calc(6px + var(--sab)); }
+}
+
+@media (max-height: 740px) {
+  .topbar { padding-top: calc(28px + var(--sat)); }
+  :root { --core-size: min(50vw, 34vh, 250px); }
+  .stage { min-height: min(58vh, 500px); }
+  .sheet { max-height: calc(100dvh - 88px - var(--sab)); }
 }
 
 /* ---- reduced motion -------------------------------------------------------------- */

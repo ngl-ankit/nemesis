@@ -31,6 +31,7 @@ from llm_client import (
     scorecard,
     split_lang_tag,
     stream_counter_argument,
+    transcribe_audio,
 )
 from prompts import DIFFICULTIES, LANGUAGES, PERSONAS
 
@@ -78,7 +79,7 @@ app.config.update(
     SESSION_COOKIE_SECURE=config.IS_PRODUCTION,
     SESSION_COOKIE_NAME="nemesis_session",
     PERMANENT_SESSION_LIFETIME=timedelta(days=config.SESSION_DAYS),
-    MAX_CONTENT_LENGTH=256 * 1024,
+    MAX_CONTENT_LENGTH=8 * 1024 * 1024,
     JSON_SORT_KEYS=False,
 )
 
@@ -280,6 +281,35 @@ def client_config():
 @app.route("/api/topics")
 def topics():
     return jsonify(TOPICS)
+
+
+@app.route("/api/transcribe", methods=["POST"])
+@limiter.limit(config.RATELIMIT_TRANSCRIBE)
+def transcribe_endpoint():
+    audio_file = request.files.get("audio")
+    if audio_file is None:
+        return jsonify({"error": "missing_audio", "message": "Record audio first."}), 400
+
+    mime = (audio_file.mimetype or "audio/webm").split(";", 1)[0].strip().lower()
+    audio_bytes = audio_file.read() or b""
+    if not audio_bytes:
+        return jsonify({"error": "empty_audio", "message": "No speech captured. Try again."}), 400
+    if len(audio_bytes) > 6 * 1024 * 1024:
+        return jsonify({"error": "audio_too_large", "message": "Recording too large. Keep it under ~20 seconds."}), 413
+
+    language = _clean_text(request.form.get("language", "auto"), 12)
+    (result, _ms) = _timed("transcribe", lambda: transcribe_audio(audio_bytes, mime, language))
+    text, fallback = result
+    if not text:
+        return (
+            jsonify({
+                "error": "transcription_failed",
+                "message": "Could not transcribe audio. Please retry.",
+                "fallback": True,
+            }),
+            502,
+        )
+    return jsonify({"text": text, "fallback": fallback, "model": config.STT_MODEL})
 
 
 # --------------------------------------------------------------------------

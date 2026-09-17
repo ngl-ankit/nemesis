@@ -29,6 +29,10 @@ services:
         value: https://api.groq.com/openai/v1
       - key: LLM_REASONING_EFFORT
         value: low             # gpt-oss-20b is a reasoning model; keeps spoken replies fast
+      - key: STT_MODEL
+        value: whisper-large-v3-turbo
+      - key: RATELIMIT_TRANSCRIBE
+        value: "20 per minute"
       - key: SECRET_KEY
         generateValue: true    # signs the session cookie
       - key: SESSION_DAYS

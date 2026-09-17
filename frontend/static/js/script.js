@@ -130,6 +130,10 @@ let roundTotal = 0;
 let currentLang = settings.language === 'auto' ? (navigator.language || 'en').slice(0, 2) : settings.language;
 let micOn = true;              // dock mic toggle
 let sttRetry = 0;              // consecutive STT restart attempts (backoff)
+let recorder = null;
+let recorderChunks = [];
+let recorderMime = '';
+let recorderPromise = null;
 
 /* ============================== helpers ============================== */
 const $ = (id) => document.getElementById(id);
@@ -512,7 +516,89 @@ function releaseMic() {
 
 /* ============================== STT + wake state machine ============================== */
 const SRClass = window.SpeechRecognition || window.webkitSpeechRecognition;
-function sttSupported() { return !!SRClass; }
+const RECORDER_MIME_CANDIDATES = [
+  'audio/webm;codecs=opus',
+  'audio/webm',
+  'audio/mp4',
+  'audio/ogg;codecs=opus',
+  'audio/ogg',
+  'audio/wav',
+];
+
+function recorderSupported() {
+  return !!(window.MediaRecorder && navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+}
+
+function isRecorderMode() {
+  return !SRClass && recorderSupported();
+}
+
+function sttSupported() { return !!SRClass || recorderSupported(); }
+
+function pickRecorderMime() {
+  if (!window.MediaRecorder || !MediaRecorder.isTypeSupported) return '';
+  for (const m of RECORDER_MIME_CANDIDATES) {
+    try { if (MediaRecorder.isTypeSupported(m)) return m; } catch (e) {}
+  }
+  return '';
+}
+
+async function transcribeRecording(blob, attempt = 0) {
+  const fd = new FormData();
+  fd.append('audio', blob, 'capture.webm');
+  fd.append('language', settings.language || 'auto');
+  const res = await fetch('/api/transcribe', { method: 'POST', body: fd, credentials: 'same-origin' });
+  if (res.status === 401) { onAuthLost(); return ''; }
+  let body = null;
+  try { body = await res.json(); } catch (e) { body = null; }
+  if (!res.ok) {
+    if (res.status >= 500 && attempt < 1) {
+      await new Promise((r) => setTimeout(r, 250));
+      return transcribeRecording(blob, attempt + 1);
+    }
+    throw new Error((body && (body.message || body.error)) || ('TRANSCRIBE ERROR ' + res.status));
+  }
+  return String((body && body.text) || '').trim();
+}
+
+async function startRecorderCapture() {
+  if (!recorderSupported()) return false;
+  const ok = await ensureMic();
+  if (!ok || !micStream) return false;
+  if (recorder && recorder.state !== 'inactive') return true;
+  recorderMime = pickRecorderMime() || 'audio/webm';
+  recorderChunks = [];
+  recorder = new MediaRecorder(micStream, recorderMime ? { mimeType: recorderMime } : undefined);
+  recorder.ondataavailable = (ev) => { if (ev.data && ev.data.size > 0) recorderChunks.push(ev.data); };
+  recorder.onerror = (ev) => toast('RECORDER ERROR — ' + (((ev && ev.error && ev.error.name) || 'error').toUpperCase()));
+  recorder.start();
+  return true;
+}
+
+function stopRecorderCapture(finalize = false) {
+  if (!recorder) return Promise.resolve('');
+  if (recorderPromise) return recorderPromise;
+  recorderPromise = new Promise((resolve) => {
+    const r = recorder;
+    const done = async () => {
+      recorder = null;
+      const chunks = recorderChunks;
+      recorderChunks = [];
+      recorderPromise = null;
+      if (!finalize || !chunks.length) { resolve(''); return; }
+      try {
+        const blob = new Blob(chunks, { type: recorderMime || 'audio/webm' });
+        resolve(await transcribeRecording(blob));
+      } catch (e) {
+        toast(e.message || 'TRANSCRIBE FAILED');
+        resolve('');
+      }
+    };
+    r.onstop = done;
+    try { if (r.state !== 'inactive') r.stop(); else done(); } catch (e) { done(); }
+  });
+  return recorderPromise;
+}
 
 function normText(s) { return String(s).toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim(); }
 
@@ -559,8 +645,14 @@ function matchesWake(text) {
 
 async function startSTT() {
   if (!sttSupported()) {
-    toast('SPEECH RECOGNITION NOT SUPPORTED — use Chrome or Edge');
+    toast('VOICE INPUT UNAVAILABLE — USE TOPIC CHIPS OR KEYBOARD');
     return false;
+  }
+  if (isRecorderMode()) {
+    $('captured').textContent = '';
+    $('pv-voice-note').textContent = micOn ? 'RECORDING' : 'MIC MUTED';
+    if (!micOn) return false;
+    return startRecorderCapture();
   }
   if (sr) { try { sr.abort(); } catch (e) {} sr = null; }
   // Mic visualizer is optional — speech recognition works independently.
@@ -593,15 +685,13 @@ async function startSTT() {
     // 'no-speech' / 'aborted' / 'network' / transient errors: onend restarts.
   };
   r.onend = () => {
-    // Chrome ends recognition after ~60s, on silence, or on transient errors.
-    // Restart with capped backoff while we are still supposed to be listening.
     if (endedByError || sr !== r) return;
     if (!(st === 'listening' || mode === 'sleeping')) return;
     const delay = Math.min(4000, 300 + sttRetry * 400);
     sttRetry = Math.min(sttRetry + 1, 10);
     setTimeout(() => {
       if (sr === r && (st === 'listening' || mode === 'sleeping')) {
-        try { r.start(); } catch (e) { /* already started / transient */ }
+        try { r.start(); } catch (e) {}
       }
     }, delay);
   };
@@ -612,9 +702,6 @@ async function startSTT() {
     sttRetry = 0;
     return true;
   } catch (e) {
-    // `start()` can throw if the engine is mid-teardown ("already started" /
-    // "InvalidStateError"). Retry once on the next tick instead of giving up,
-    // otherwise a single transient failure leaves the app permanently deaf.
     if (sttRetry < 6) {
       sttRetry += 1;
       setTimeout(() => { if (sr === r) startSTT(); }, 500);
@@ -623,9 +710,16 @@ async function startSTT() {
   }
 }
 
-function stopSTT() {
+function stopSTT(finalizeRecorder = false) {
+  if (isRecorderMode()) {
+    return stopRecorderCapture(finalizeRecorder).then((text) => {
+      $('captured').textContent = '';
+      return text;
+    });
+  }
   if (sr) { try { sr.abort(); } catch (e) {} sr = null; }
   $('captured').textContent = '';
+  return Promise.resolve('');
 }
 
 function onFinalText(text) {
@@ -705,6 +799,7 @@ function beginListening() {
 let wakeRetry = 0;
 function startWakeListening() {
   if (!settings.autoListen) { setSt('idle'); return; }
+  if (isRecorderMode()) { setSt('idle'); return; }
   startSTT().then((ok) => {
     if (ok) { wakeRetry = 0; setSt('idle'); return; }
     if (mode !== 'sleeping') return;
@@ -754,6 +849,59 @@ function analyzeTurn(text) {
   }).catch(() => { $('pv-scan').textContent = 'ERR'; });
 }
 
+function createStreamSpeaker(initialLang, onDone) {
+  let lang = String(initialLang || currentLang || 'en').slice(0, 2).toLowerCase();
+  let consumed = 0;
+  let speaking = false;
+  let finished = false;
+  const queue = [];
+
+  const pump = () => {
+    if (speaking || !queue.length) {
+      if (finished && !speaking && !queue.length && onDone) onDone();
+      return;
+    }
+    speaking = true;
+    const part = queue.shift();
+    speak(part, lang, () => {
+      speaking = false;
+      pump();
+    });
+  };
+
+  const pushFromText = (text, force = false) => {
+    const fresh = String(text || '').slice(consumed);
+    if (!fresh) return;
+    const matches = fresh.match(/[^.!?。！？]+[.!?。！？]+/g) || [];
+    let spoken = 0;
+    for (const m of matches) {
+      const s = m.trim();
+      if (!s) continue;
+      queue.push(s);
+      spoken += m.length;
+    }
+    if (force) {
+      const tail = fresh.slice(spoken).trim();
+      if (tail) { queue.push(tail); spoken = fresh.length; }
+    }
+    consumed += spoken;
+    pump();
+  };
+
+  return {
+    push(chunk, fullText) {
+      if (chunk && /[.!?。！？]\s*$/.test(chunk)) pushFromText(fullText, false);
+    },
+    finish(finalLang, fullText) {
+      if (finalLang) lang = String(finalLang).slice(0, 2).toLowerCase();
+      pushFromText(fullText, true);
+      finished = true;
+      pump();
+    },
+    cancel() { finished = true; queue.length = 0; },
+  };
+}
+
 async function submitUtterance(text) {
   if (streamAbort) { try { streamAbort.abort(); } catch (e) {} streamAbort = null; }
   stopSpeaking();
@@ -786,6 +934,22 @@ async function submitUtterance(text) {
   const t0 = performance.now();
   let reply = '';
   let done = null;
+  let paintScheduled = false;
+  let paintedReply = '';
+  const flushReply = () => {
+    paintScheduled = false;
+    if (paintedReply !== reply) {
+      paintedReply = reply;
+      $('reply-line').textContent = paintedReply;
+    }
+  };
+  const streamSpeaker = createStreamSpeaker(currentLang, () => {
+    if (mode === 'active') {
+      setSt('listening');
+      startRoundTimer();
+      startSTT().then(() => {});
+    }
+  });
 
   try {
     const res = await fetch('/api/debate/stream', {
@@ -821,15 +985,24 @@ async function submitUtterance(text) {
         let j = null;
         try { j = JSON.parse(data); } catch (e) { continue; }
         if (ev === 'delta') {
-          $('tele-latency').textContent = $('tele-latency').textContent === '---' ? String(Math.round(performance.now() - t0)) : $('tele-latency').textContent;
-          reply += (j.t || '');
-          $('reply-line').textContent = reply;
+          if ($('tele-latency').textContent === '---') {
+            $('tele-latency').textContent = String(Math.round(performance.now() - t0));
+          }
+          const delta = String(j.t || '');
+          if (!delta) continue;
+          reply += delta;
+          streamSpeaker.push(delta, reply);
+          if (!paintScheduled) {
+            paintScheduled = true;
+            requestAnimationFrame(flushReply);
+          }
         } else if (ev === 'done') {
           done = j;
         }
       }
     }
   } catch (err) {
+    streamSpeaker.cancel();
     if (err.name !== 'AbortError') {
       toast(err.message || 'STREAM ERROR');
       statusFlash('LINK ERROR — TRY AGAIN');
@@ -840,6 +1013,7 @@ async function submitUtterance(text) {
   }
 
   reply = (done && done.text) || reply;
+  $('reply-line').textContent = reply;
   if (done && done.fallback) {
     toast('AI LINK UNAVAILABLE — CHECK LLM_API_KEY / MODEL ACCESS ON THE SERVER', 4500);
     statusFlash('AI OFFLINE — FALLBACK REPLY');
@@ -850,13 +1024,7 @@ async function submitUtterance(text) {
   if (done && typeof done.latency_ms === 'number') $('tele-latency').textContent = String(done.latency_ms);
   updateIntegrity();
 
-  speak(reply, done && done.lang, () => {
-    if (mode === 'active') {
-      setSt('listening');
-      startRoundTimer();
-      startSTT().then(() => {});
-    }
-  });
+  streamSpeaker.finish(done && done.lang, reply);
 }
 
 /* ============================== HUD ============================== */
@@ -1458,6 +1626,24 @@ function wireUI() {
   $('core-btn').addEventListener('click', () => {
     if (st === 'thinking' || st === 'speaking') return;
     if (mode === 'sleeping') { wakeUp(); return; }
+    if (isRecorderMode()) {
+      if (recorder && recorder.state !== 'inactive') {
+        stopSTT(true).then((text) => {
+          stopRoundTimer();
+          setSt('idle');
+          if (text) {
+            $('captured').textContent = '“' + text + '”';
+            pending = text;
+            flushPending();
+          } else {
+            statusFlash('NO VOICE CAPTURED — TAP TO RECORD AGAIN');
+          }
+        });
+        return;
+      }
+      beginListening();
+      return;
+    }
     if (sr) {
       stopSTT();
       stopRoundTimer();
@@ -1515,7 +1701,7 @@ async function startExperience() {
   $('tele-session').textContent = Math.random().toString(16).slice(2, 8).toUpperCase();
   // This click is the user gesture that unlocks audio + the mic — the most
   // reliable moment to (re)arm recognition.
-  if (settings.autoListen && sttSupported()) {
+  if (settings.autoListen && sttSupported() && !isRecorderMode()) {
     startWakeListening();
     speak(personaLine('wake'), currentLang, () => {});
   } else {
@@ -1599,7 +1785,7 @@ async function onAuthenticated(user) {
   $('boot').hidden = false;
   setTimeout(() => $('boot-btn').focus(), 50);
   // Voice-first: try to arm wake listening before the boot tap; the tap re-arms if blocked.
-  if (settings.autoListen && sttSupported()) startWakeListening();
+  if (settings.autoListen && sttSupported() && !isRecorderMode()) startWakeListening();
 }
 
 let authLostOnce = false;
@@ -1716,7 +1902,11 @@ function init() {
     saveSettings();
   }
   if (!window.SpeechRecognition && !window.webkitSpeechRecognition) {
-    toast('NO SPEECH RECOGNITION — USE TOPIC CHIPS TO DEBATE', 6000);
+    if (recorderSupported()) {
+      toast('VOICE FALLBACK ACTIVE — TAP CORE TO RECORD, TAP AGAIN TO SEND', 5200);
+    } else {
+      toast('VOICE INPUT APIs UNAVAILABLE — USE TOPIC CHIPS TO DEBATE', 6000);
+    }
   }
 }
 // Robust init: handle both pre- and post-DOMContentLoaded execution (defer edge cases).
