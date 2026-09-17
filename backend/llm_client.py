@@ -14,6 +14,7 @@ OpenAI-compatible chat-completions endpoint (Groq by default).
 
 from __future__ import annotations
 
+import io
 import json
 import logging
 import random
@@ -84,6 +85,17 @@ SCORECARD_PROMPT = (
 
 LANG_TAG_RE = re.compile(r"\(\s*lang\s*:\s*([A-Za-z]{2})\s*\)\s*[.。！!．]*\s*$")
 
+_MIME_EXT = {
+    "audio/webm": "webm",
+    "audio/ogg": "ogg",
+    "audio/mp4": "m4a",
+    "audio/mpeg": "mp3",
+    "audio/mp3": "mp3",
+    "audio/wav": "wav",
+    "audio/x-wav": "wav",
+    "audio/aac": "aac",
+}
+
 
 def split_lang_tag(text: str) -> tuple[str, str | None]:
     if not text:
@@ -93,6 +105,36 @@ def split_lang_tag(text: str) -> tuple[str, str | None]:
     if match:
         return stripped[: match.start()].rstrip(), match.group(1).lower()
     return stripped, None
+
+
+def transcribe_audio(audio_bytes: bytes, mime_type: str = "audio/webm", language: str | None = None) -> tuple[str, bool]:
+    """Return ``(text, fallback)`` from the provider STT endpoint."""
+    if not audio_bytes:
+        return "", True
+
+    mime = (mime_type or "audio/webm").split(";", 1)[0].strip().lower()
+    ext = _MIME_EXT.get(mime, "webm")
+    payload = io.BytesIO(audio_bytes)
+    payload.name = f"clip.{ext}"
+
+    kwargs = {
+        "model": config.STT_MODEL,
+        "file": (payload.name, payload, mime),
+        "temperature": 0,
+    }
+    if language and language not in {"", "auto"}:
+        kwargs["language"] = str(language)[:12]
+
+    def call():
+        resp = _get_client().audio.transcriptions.create(**kwargs)
+        text = getattr(resp, "text", "") if resp is not None else ""
+        return str(text or "").strip()
+
+    try:
+        text = _with_retries(call, op="transcribe")
+    except LLMUnavailable:
+        return "", True
+    return (text, False) if text else ("", True)
 
 
 _client = None

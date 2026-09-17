@@ -58,6 +58,7 @@ LLM_MODEL: str = _env("LLM_MODEL", "GROQ_MODEL", default=DEFAULT_MODEL)
 LLM_BASE_URL: str = _env("LLM_BASE_URL", "GROQ_BASE_URL", default=DEFAULT_BASE_URL)
 LLM_TIMEOUT_S: float = float(_env("LLM_TIMEOUT_S", default="30"))
 LLM_MAX_RETRIES: int = int(_env("LLM_MAX_RETRIES", default="3"))
+STT_MODEL: str = _env("STT_MODEL", default="whisper-large-v3-turbo")
 
 # gpt-oss-20b is a reasoning model: it spends completion tokens on hidden
 # reasoning before emitting visible text. "low" keeps that overhead small so
@@ -85,6 +86,7 @@ RATELIMIT_STORAGE_URI: str = os.environ.get("RATELIMIT_STORAGE_URI", "memory://"
 RATELIMIT_DEBATE: str = os.environ.get("RATELIMIT_DEBATE", "20 per minute")
 RATELIMIT_FALLACY: str = os.environ.get("RATELIMIT_FALLACY", "30 per minute")
 RATELIMIT_SCORECARD: str = os.environ.get("RATELIMIT_SCORECARD", "6 per minute")
+RATELIMIT_TRANSCRIBE: str = os.environ.get("RATELIMIT_TRANSCRIBE", "20 per minute")
 RATELIMIT_AUTH: str = os.environ.get("RATELIMIT_AUTH", "10 per minute")
 RATELIMIT_DEFAULT: str = os.environ.get("RATELIMIT_DEFAULT", "120 per minute")
 
